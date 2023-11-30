@@ -1,4 +1,4 @@
-package main
+package messagebroker
 
 import (
 	"context"
@@ -204,7 +204,7 @@ func TestSendsDataToTopicSubscribers(t *testing.T) {
 
 	// send some data
 	data := []byte("hello world")
-	msg := message{
+	msg := Message{
 		Topic: "topic a",
 		Data:  data,
 	}

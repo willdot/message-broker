@@ -1,4 +1,4 @@
-package main
+package messagebroker
 
 import (
 	"log/slog"
@@ -35,7 +35,7 @@ func (t *topic) removeSubscriber(addr net.Addr) {
 	delete(t.subscriptions, addr)
 }
 
-func (t *topic) sendMessageToSubscribers(msg message) {
+func (t *topic) sendMessageToSubscribers(msg Message) {
 	t.mu.Lock()
 	subscribers := t.subscriptions
 	t.mu.Unlock()

@@ -1,4 +1,4 @@
-package main
+package messagebroker
 
 import (
 	"context"
@@ -20,7 +20,7 @@ const (
 	Publish     Action = 3
 )
 
-type message struct {
+type Message struct {
 	Topic string `json:"topic"`
 	Data  []byte `json:"data"`
 }
@@ -223,7 +223,7 @@ func (s *Server) handlePublisherConn(conn net.Conn) {
 		return
 	}
 
-	var msg message
+	var msg Message
 	err = json.Unmarshal(buf, &msg)
 	if err != nil {
 		_, _ = conn.Write([]byte("invalid message"))

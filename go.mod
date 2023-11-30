@@ -1,4 +1,4 @@
-module github.com/willdot/message-broker
+module github.com/willdot/messagebroker
 
 go 1.21.0
 
