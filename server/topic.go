@@ -1,10 +1,12 @@
-package messagebroker
+package server
 
 import (
 	"encoding/json"
 	"log/slog"
 	"net"
 	"sync"
+
+	"github.com/willdot/messagebroker"
 )
 
 type topic struct {
@@ -28,7 +30,7 @@ func (t *topic) removeSubscriber(addr net.Addr) {
 	delete(t.subscriptions, addr)
 }
 
-func (t *topic) sendMessageToSubscribers(msg Message) {
+func (t *topic) sendMessageToSubscribers(msg messagebroker.Message) {
 	t.mu.Lock()
 	subscribers := t.subscriptions
 	t.mu.Unlock()

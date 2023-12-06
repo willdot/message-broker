@@ -1,4 +1,4 @@
-package messagebroker
+package server
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"net"
 	"strings"
 	"sync"
+
+	"github.com/willdot/messagebroker"
 )
 
 // Action represents the type of action that a peer requests to do
@@ -19,11 +21,6 @@ const (
 	Publish     Action = 3
 )
 
-type Message struct {
-	Topic string `json:"topic"`
-	Data  []byte `json:"data"`
-}
-
 type Server struct {
 	addr string
 	lis  net.Listener
@@ -32,7 +29,7 @@ type Server struct {
 	topics map[string]topic
 }
 
-func NewServer(ctx context.Context, addr string) (*Server, error) {
+func New(ctx context.Context, addr string) (*Server, error) {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen: %w", err)
@@ -204,7 +201,7 @@ func (s *Server) handlePublish(peer peer) {
 			return
 		}
 
-		var msg Message
+		var msg messagebroker.Message
 		err = json.Unmarshal(buf, &msg)
 		if err != nil {
 			_, _ = peer.Write([]byte("invalid message"))

@@ -1,4 +1,4 @@
-package messagebroker
+package server
 
 import (
 	"encoding/binary"
