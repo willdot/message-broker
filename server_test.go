@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -202,11 +204,10 @@ func TestSendsDataToTopicSubscribers(t *testing.T) {
 	err = binary.Write(publisherConn, binary.BigEndian, Publish)
 	require.NoError(t, err)
 
-	// send some data
-	data := []byte("hello world")
+	// send a message
 	msg := Message{
 		Topic: "topic a",
-		Data:  data,
+		Data:  []byte("hello world"),
 	}
 
 	rawMsg, err := json.Marshal(msg)
@@ -221,11 +222,77 @@ func TestSendsDataToTopicSubscribers(t *testing.T) {
 
 	// check the subsribers got the data
 	for _, conn := range subscribers {
-		buf := make([]byte, len(data))
+
+		var dataLen uint64
+		err = binary.Read(conn, binary.BigEndian, &dataLen)
+		require.NoError(t, err)
+
+		buf := make([]byte, dataLen)
 		n, err := conn.Read(buf)
 		require.NoError(t, err)
-		require.Equal(t, len(data), n)
+		require.Equal(t, int(dataLen), n)
 
-		assert.Equal(t, data, buf)
+		assert.Equal(t, rawMsg, buf)
+	}
+}
+
+func TestPublishMultipleTimes(t *testing.T) {
+	_ = createServer(t)
+
+	publisherConn, err := net.Dial("tcp", "localhost:3000")
+	require.NoError(t, err)
+
+	err = binary.Write(publisherConn, binary.BigEndian, Publish)
+	require.NoError(t, err)
+
+	messages := make([][]byte, 0, 10)
+	for i := 0; i < 10; i++ {
+		msg := Message{
+			Topic: "topic a",
+			Data:  []byte(fmt.Sprintf("message %d", i)),
+		}
+
+		rawMsg, err := json.Marshal(msg)
+		require.NoError(t, err)
+
+		messages = append(messages, rawMsg)
+	}
+
+	subscribeFinCh := make(chan struct{})
+	// create a subscriber that will read messages
+	subscriberConn := createConnectionAndSubscribe(t, []string{"topic a", "topic b"})
+	go func() {
+		// check subscriber got all messages
+		for _, msg := range messages {
+			var dataLen uint64
+			err = binary.Read(subscriberConn, binary.BigEndian, &dataLen)
+			require.NoError(t, err)
+
+			buf := make([]byte, dataLen)
+			n, err := subscriberConn.Read(buf)
+			require.NoError(t, err)
+			require.Equal(t, int(dataLen), n)
+
+			assert.Equal(t, msg, buf)
+		}
+
+		subscribeFinCh <- struct{}{}
+	}()
+
+	// send multiple messages
+	for _, msg := range messages {
+		// send data length first
+		err = binary.Write(publisherConn, binary.BigEndian, uint32(len(msg)))
+		require.NoError(t, err)
+		n, err := publisherConn.Write(msg)
+		require.NoError(t, err)
+		require.Equal(t, len(msg), n)
+	}
+
+	select {
+	case <-subscribeFinCh:
+		break
+	case <-time.After(time.Second):
+		t.Fatal(fmt.Errorf("timed out waiting for subscriber to read messages"))
 	}
 }

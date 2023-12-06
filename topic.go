@@ -1,6 +1,7 @@
 package messagebroker
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net"
 	"sync"
@@ -19,19 +20,11 @@ func newTopic(name string) topic {
 	}
 }
 
-func (t *topic) addSubscriber(conn net.Conn) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	slog.Info("adding subscriber", "conn", conn.LocalAddr())
-	t.subscriptions[conn.LocalAddr()] = Subscriber{conn: conn}
-}
-
 func (t *topic) removeSubscriber(addr net.Addr) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	slog.Info("removing subscriber", "conn", addr)
+	slog.Info("removing subscriber", "peer", addr)
 	delete(t.subscriptions, addr)
 }
 
@@ -40,10 +33,15 @@ func (t *topic) sendMessageToSubscribers(msg Message) {
 	subscribers := t.subscriptions
 	t.mu.Unlock()
 
+	msgData, err := json.Marshal(msg)
+	if err != nil {
+		slog.Error("failed to marshal message for subscribers", "error", err)
+	}
+
 	for addr, subscriber := range subscribers {
-		err := subscriber.SendMessage(msg.Data)
+		err := subscriber.SendMessage(msgData)
 		if err != nil {
-			slog.Error("failed to send to message", "error", err, "conn", addr)
+			slog.Error("failed to send to message", "error", err, "peer", addr)
 			continue
 		}
 	}
