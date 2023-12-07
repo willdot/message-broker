@@ -56,18 +56,30 @@ func (s *Subscriber) SubscribeToTopics(topicNames []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to topics: %w", err)
 	}
-	buf := make([]byte, 512)
-	_, err = s.conn.Read(buf)
+
+	var resp server.Status
+	err = binary.Read(s.conn, binary.BigEndian, &resp)
 	if err != nil {
 		return fmt.Errorf("failed to read confirmation of subscription: %w", err)
 	}
 
-	// TODO: this is soooo hacky - need to have some sort of response code
-	if string(buf[:10]) != "subscribed" {
-		return fmt.Errorf("failed to subscribe: '%s'", string(buf))
+	if resp == server.Subscribed {
+		return nil
 	}
 
-	return nil
+	var dataLen uint32
+	err = binary.Read(s.conn, binary.BigEndian, &dataLen)
+	if err != nil {
+		return fmt.Errorf("received status %s:", resp)
+	}
+
+	buf := make([]byte, dataLen)
+	_, err = s.conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("received status %s:", resp)
+	}
+
+	return fmt.Errorf("received status %s - %s", resp, buf)
 }
 
 // Consumer allows the consumption of messages. It is thread safe to range over the Msgs channel to consume. If during the consumer

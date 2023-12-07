@@ -84,7 +84,8 @@ func (s *Server) handleConn(conn net.Conn) {
 		s.handlePublish(peer)
 	default:
 		slog.Error("unknown action", "action", action, "peer", peer.addr())
-		_, _ = peer.Write([]byte("unknown action"))
+		peer.writeStatus(Error, "unknown action")
+		//_, _ = peer.Write([]byte("unknown action"))
 	}
 }
 
@@ -122,11 +123,13 @@ func (s *Server) subscribePeerToTopic(peer peer) {
 	dataLen, err := peer.readDataLength()
 	if err != nil {
 		slog.Error(err.Error(), "peer", peer.addr())
-		_, _ = peer.Write([]byte("invalid data length of topics provided"))
+		peer.writeStatus(Error, "invalid data length of topics provided")
+		// _, _ = peer.Write([]byte("invalid data length of topics provided"))
 		return
 	}
 	if dataLen == 0 {
-		_, _ = peer.Write([]byte("data length of topics is 0"))
+		peer.writeStatus(Error, "data length of topics is 0")
+		// _, _ = peer.Write([]byte("data length of topics is 0"))
 		return
 	}
 
@@ -134,7 +137,8 @@ func (s *Server) subscribePeerToTopic(peer peer) {
 	_, err = peer.Read(buf)
 	if err != nil {
 		slog.Error("failed to read subscibers topic data", "error", err, "peer", peer.addr())
-		_, _ = peer.Write([]byte("failed to read topic data"))
+		peer.writeStatus(Error, "failed to read topic data")
+		//_, _ = peer.Write([]byte("failed to read topic data"))
 		return
 	}
 
@@ -142,12 +146,14 @@ func (s *Server) subscribePeerToTopic(peer peer) {
 	err = json.Unmarshal(buf, &topics)
 	if err != nil {
 		slog.Error("failed to unmarshal subscibers topic data", "error", err, "peer", peer.addr())
-		_, _ = peer.Write([]byte("invalid topic data provided"))
+		peer.writeStatus(Error, "invalid topic data provided")
+		//_, _ = peer.Write([]byte("invalid topic data provided"))
 		return
 	}
 
 	s.subscribeToTopics(peer, topics)
-	_, _ = peer.Write([]byte("subscribed"))
+	//_, _ = peer.Write([]byte("subscribed"))
+	peer.writeStatus(Subscribed, "")
 }
 
 func (s *Server) handleUnsubscribe(peer peer) {
@@ -155,11 +161,13 @@ func (s *Server) handleUnsubscribe(peer peer) {
 	dataLen, err := peer.readDataLength()
 	if err != nil {
 		slog.Error(err.Error(), "peer", peer.addr())
-		_, _ = peer.Write([]byte("invalid data length of topics provided"))
+		peer.writeStatus(Error, "invalid data length of topics provided")
+		//_, _ = peer.Write([]byte("invalid data length of topics provided"))
 		return
 	}
 	if dataLen == 0 {
-		_, _ = peer.Write([]byte("data length of topics is 0"))
+		peer.writeStatus(Error, "data length of topics is 0")
+		//_, _ = peer.Write([]byte("data length of topics is 0"))
 		return
 	}
 
@@ -167,7 +175,8 @@ func (s *Server) handleUnsubscribe(peer peer) {
 	_, err = peer.Read(buf)
 	if err != nil {
 		slog.Error("failed to read subscibers topic data", "error", err, "peer", peer.addr())
-		_, _ = peer.Write([]byte("failed to read topic data"))
+		peer.writeStatus(Error, "failed to read topic data")
+		//_, _ = peer.Write([]byte("failed to read topic data"))
 		return
 	}
 
@@ -175,13 +184,14 @@ func (s *Server) handleUnsubscribe(peer peer) {
 	err = json.Unmarshal(buf, &topics)
 	if err != nil {
 		slog.Error("failed to unmarshal subscibers topic data", "error", err, "peer", peer.addr())
-		_, _ = peer.Write([]byte("invalid topic data provided"))
+		peer.writeStatus(Error, "invalid topic data provided")
+		//_, _ = peer.Write([]byte("invalid topic data provided"))
 		return
 	}
 
 	s.unsubscribeToTopics(peer, topics)
-
-	_, _ = peer.Write([]byte("unsubscribed"))
+	peer.writeStatus(Unsubscribed, "")
+	//_, _ = peer.Write([]byte("unsubscribed"))
 }
 
 func (s *Server) handlePublish(peer peer) {
@@ -189,7 +199,8 @@ func (s *Server) handlePublish(peer peer) {
 		dataLen, err := peer.readDataLength()
 		if err != nil {
 			slog.Error(err.Error(), "peer", peer.addr())
-			_, _ = peer.Write([]byte("invalid data length of data provided"))
+			peer.writeStatus(Error, "invalid data length of data provided")
+			//_, _ = peer.Write([]byte("invalid data length of data provided"))
 			return
 		}
 		if dataLen == 0 {
@@ -199,15 +210,17 @@ func (s *Server) handlePublish(peer peer) {
 		buf := make([]byte, dataLen)
 		_, err = peer.Read(buf)
 		if err != nil {
-			_, _ = peer.Write([]byte("failed to read data"))
 			slog.Error("failed to read data from peer", "error", err, "peer", peer.addr())
+			peer.writeStatus(Error, "failed to read data")
+			//_, _ = peer.Write([]byte("failed to read data"))
 			return
 		}
 
 		var msg messagebroker.Message
 		err = json.Unmarshal(buf, &msg)
 		if err != nil {
-			_, _ = peer.Write([]byte("invalid message"))
+			peer.writeStatus(Error, "invalid message")
+			//_, _ = peer.Write([]byte("invalid message"))
 			slog.Error("failed to unmarshal data to message", "error", err, "peer", peer.addr())
 			continue
 		}

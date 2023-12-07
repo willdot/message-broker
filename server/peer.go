@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"net"
 )
 
@@ -48,4 +49,51 @@ func (p *peer) readDataLength() (uint32, error) {
 	}
 
 	return dataLen, nil
+}
+
+// Status represents the status of a request
+type Status uint8
+
+const (
+	Subscribed   = 1
+	Unsubscribed = 2
+	Error        = 3
+)
+
+func (s Status) String() string {
+	switch s {
+	case Subscribed:
+		return "subsribed"
+	case Unsubscribed:
+		return "unsubscribed"
+	case Error:
+		return "error"
+	}
+
+	return ""
+}
+
+func (p *peer) writeStatus(status Status, message string) {
+	err := binary.Write(p.conn, binary.BigEndian, status)
+	if err != nil {
+		slog.Error("failed to write status to peers connection", "error", err, "peer", p.addr())
+		return
+	}
+
+	if message == "" {
+		return
+	}
+
+	msgBytes := []byte(message)
+	err = binary.Write(p.conn, binary.BigEndian, uint32(len(msgBytes)))
+	if err != nil {
+		slog.Error("failed to write message length to peers connection", "error", err, "peer", p.addr())
+		return
+	}
+
+	_, err = p.conn.Write(msgBytes)
+	if err != nil {
+		slog.Error("failed to write message to peers connection", "error", err, "peer", p.addr())
+		return
+	}
 }

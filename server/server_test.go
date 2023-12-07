@@ -51,14 +51,12 @@ func createConnectionAndSubscribe(t *testing.T, topics []string) net.Conn {
 	_, err = conn.Write(rawTopics)
 	require.NoError(t, err)
 
-	expectedRes := "subscribed"
+	expectedRes := Subscribed
 
-	buf := make([]byte, len(expectedRes))
-	n, err := conn.Read(buf)
-	require.NoError(t, err)
-	require.Equal(t, len(expectedRes), n)
+	var resp Status
+	err = binary.Read(conn, binary.BigEndian, &resp)
 
-	assert.Equal(t, expectedRes, string(buf))
+	assert.Equal(t, expectedRes, int(resp))
 
 	return conn
 }
@@ -98,14 +96,12 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	_, err = conn.Write(rawTopics)
 	require.NoError(t, err)
 
-	expectedRes := "unsubscribed"
+	expectedRes := Unsubscribed
 
-	buf := make([]byte, len(expectedRes))
-	n, err := conn.Read(buf)
-	require.NoError(t, err)
-	require.Equal(t, len(expectedRes), n)
+	var resp Status
+	err = binary.Read(conn, binary.BigEndian, &resp)
 
-	assert.Equal(t, expectedRes, string(buf))
+	assert.Equal(t, expectedRes, int(resp))
 
 	assert.Len(t, srv.topics, 3)
 	assert.Len(t, srv.topics["topic a"].subscriptions, 0)
@@ -154,14 +150,24 @@ func TestInvalidAction(t *testing.T) {
 	err = binary.Write(conn, binary.BigEndian, uint8(99))
 	require.NoError(t, err)
 
-	expectedRes := "unknown action"
+	expectedRes := Error
 
-	buf := make([]byte, len(expectedRes))
-	n, err := conn.Read(buf)
+	var resp Status
+	err = binary.Read(conn, binary.BigEndian, &resp)
+
+	assert.Equal(t, expectedRes, int(resp))
+
+	expectedMessage := "unknown action"
+
+	var dataLen uint32
+	err = binary.Read(conn, binary.BigEndian, &dataLen)
+	assert.Equal(t, len(expectedMessage), int(dataLen))
+
+	buf := make([]byte, dataLen)
+	_, err = conn.Read(buf)
 	require.NoError(t, err)
-	require.Equal(t, len(expectedRes), n)
 
-	assert.Equal(t, expectedRes, string(buf))
+	assert.Equal(t, expectedMessage, string(buf))
 }
 
 func TestInvalidMessagePublished(t *testing.T) {
@@ -183,10 +189,24 @@ func TestInvalidMessagePublished(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(data), n)
 
-	buf := make([]byte, 15)
+	expectedRes := Error
+
+	var resp Status
+	err = binary.Read(publisherConn, binary.BigEndian, &resp)
+
+	assert.Equal(t, expectedRes, int(resp))
+
+	expectedMessage := "invalid message"
+
+	var dataLen uint32
+	err = binary.Read(publisherConn, binary.BigEndian, &dataLen)
+	assert.Equal(t, len(expectedMessage), int(dataLen))
+
+	buf := make([]byte, dataLen)
 	_, err = publisherConn.Read(buf)
 	require.NoError(t, err)
-	assert.Equal(t, "invalid message", string(buf))
+
+	assert.Equal(t, expectedMessage, string(buf))
 }
 
 func TestSendsDataToTopicSubscribers(t *testing.T) {
