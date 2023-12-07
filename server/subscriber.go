@@ -1,16 +1,16 @@
-package messagebroker
+package server
 
 import (
 	"encoding/binary"
 	"fmt"
 )
 
-type Subscriber struct {
+type subscriber struct {
 	peer          peer
 	currentOffset int
 }
 
-func (s *Subscriber) SendMessage(msg []byte) error {
+func (s *subscriber) sendMessage(msg []byte) error {
 	dataLen := uint64(len(msg))
 
 	err := binary.Write(&s.peer, binary.BigEndian, dataLen)

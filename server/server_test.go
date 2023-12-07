@@ -1,4 +1,4 @@
-package messagebroker
+package server
 
 import (
 	"context"
@@ -11,10 +11,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/willdot/messagebroker"
 )
 
 func createServer(t *testing.T) *Server {
-	srv, err := NewServer(context.Background(), ":3000")
+	srv, err := New(context.Background(), ":3000")
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -28,7 +29,7 @@ func createServerWithExistingTopic(t *testing.T, topicName string) *Server {
 	srv := createServer(t)
 	srv.topics[topicName] = topic{
 		name:          topicName,
-		subscriptions: make(map[net.Addr]Subscriber),
+		subscriptions: make(map[net.Addr]subscriber),
 	}
 
 	return srv
@@ -205,7 +206,7 @@ func TestSendsDataToTopicSubscribers(t *testing.T) {
 	require.NoError(t, err)
 
 	// send a message
-	msg := Message{
+	msg := messagebroker.Message{
 		Topic: "topic a",
 		Data:  []byte("hello world"),
 	}
@@ -247,7 +248,7 @@ func TestPublishMultipleTimes(t *testing.T) {
 
 	messages := make([][]byte, 0, 10)
 	for i := 0; i < 10; i++ {
-		msg := Message{
+		msg := messagebroker.Message{
 			Topic: "topic a",
 			Data:  []byte(fmt.Sprintf("message %d", i)),
 		}
