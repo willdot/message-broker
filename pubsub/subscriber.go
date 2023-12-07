@@ -129,14 +129,16 @@ func (s *Subscriber) UnsubscribeToTopics(topicNames []string) error {
 	return fmt.Errorf("received status %s - %s", resp, buf)
 }
 
-// Consumer allows the consumption of messages. It is thread safe to range over the Msgs channel to consume. If during the consumer
-// receiving messages from the server an error occurs, it will be stored in Err
+// Consumer allows the consumption of messages. If during the consumer receiving messages from the
+// server an error occurs, it will be stored in Err
 type Consumer struct {
 	msgs chan messagebroker.Message
 	// TODO: better error handling? Maybe a channel of errors?
 	Err error
 }
 
+// Messages returns a channel in which this consumer will put messages onto. It is safe to range over the channel since it will be closed once
+// the consumer has finished either due to an error or from being cancelled.
 func (c *Consumer) Messages() <-chan messagebroker.Message {
 	return c.msgs
 }
