@@ -78,6 +78,27 @@ func TestSubscribeToTopics(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestUnsubscribesFromTopic(t *testing.T) {
+	createServer(t)
+
+	sub, err := NewSubscriber(serverAddr)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		sub.Close()
+	})
+
+	topics := []string{"topic a", "topic b"}
+
+	err = sub.SubscribeToTopics(topics)
+	require.NoError(t, err)
+
+	err = sub.UnsubscribeToTopics([]string{"topic a"})
+	require.NoError(t, err)
+
+	// TODO: is there a way to check? Maybe start consuming and publish to the topic unsubscribed from??
+}
+
 func TestPublishAndSubscribe(t *testing.T) {
 	createServer(t)
 

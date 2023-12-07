@@ -82,6 +82,53 @@ func (s *Subscriber) SubscribeToTopics(topicNames []string) error {
 	return fmt.Errorf("received status %s - %s", resp, buf)
 }
 
+// UnsubscribeToTopics will unsubscribe to the provided topics
+func (s *Subscriber) UnsubscribeToTopics(topicNames []string) error {
+	err := binary.Write(s.conn, binary.BigEndian, server.Unsubscribe)
+	if err != nil {
+		return fmt.Errorf("failed to unsubscribe: %w", err)
+	}
+
+	b, err := json.Marshal(topicNames)
+	if err != nil {
+		return fmt.Errorf("failed to marshal topic names: %w", err)
+	}
+
+	err = binary.Write(s.conn, binary.BigEndian, uint32(len(b)))
+	if err != nil {
+		return fmt.Errorf("failed to write topic data length: %w", err)
+	}
+
+	_, err = s.conn.Write(b)
+	if err != nil {
+		return fmt.Errorf("failed to unsubscribe to topics: %w", err)
+	}
+
+	var resp server.Status
+	err = binary.Read(s.conn, binary.BigEndian, &resp)
+	if err != nil {
+		return fmt.Errorf("failed to read confirmation of unsubscription: %w", err)
+	}
+
+	if resp == server.Unsubscribed {
+		return nil
+	}
+
+	var dataLen uint32
+	err = binary.Read(s.conn, binary.BigEndian, &dataLen)
+	if err != nil {
+		return fmt.Errorf("received status %s:", resp)
+	}
+
+	buf := make([]byte, dataLen)
+	_, err = s.conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("received status %s:", resp)
+	}
+
+	return fmt.Errorf("received status %s - %s", resp, buf)
+}
+
 // Consumer allows the consumption of messages. It is thread safe to range over the Msgs channel to consume. If during the consumer
 // receiving messages from the server an error occurs, it will be stored in Err
 type Consumer struct {
