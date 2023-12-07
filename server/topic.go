@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net"
 	"sync"
@@ -35,16 +34,9 @@ func (t *topic) sendMessageToSubscribers(msg messagebroker.Message) {
 	subscribers := t.subscriptions
 	t.mu.Unlock()
 
-	msgData, err := json.Marshal(msg)
-	if err != nil {
-		slog.Error("failed to marshal message for subscribers", "error", err)
-	}
-
-	for addr, subscriber := range subscribers {
-		err := subscriber.sendMessage(msgData)
-		if err != nil {
-			slog.Error("failed to send to message", "error", err, "peer", addr)
-			continue
-		}
+	for _, subscriber := range subscribers {
+		// TODO: this should be done in a differnt go routine so that all subscribers get the message at the same time.
+		// However we will need to find a way to cancel the go routine
+		subscriber.peer.sendMessage(msg)
 	}
 }

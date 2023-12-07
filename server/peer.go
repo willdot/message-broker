@@ -2,19 +2,28 @@ package server
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
+
+	"github.com/willdot/messagebroker"
 )
 
 type peer struct {
 	conn net.Conn
+	msgs chan messagebroker.Message
 }
 
 func newPeer(conn net.Conn) peer {
-	return peer{
+	p := peer{
 		conn: conn,
+		msgs: make(chan messagebroker.Message),
 	}
+
+	go p.handleMessages()
+
+	return p
 }
 
 // Read wraps the peers underlying connections Read function to satisfy io.Reader
@@ -25,6 +34,33 @@ func (p *peer) Read(b []byte) (n int, err error) {
 // Write wraps the peers underlying connections Write function to satisfy io.Writer
 func (p *peer) Write(b []byte) (n int, err error) {
 	return p.conn.Write(b)
+}
+
+func (p *peer) sendMessage(msg messagebroker.Message) {
+	p.msgs <- msg
+}
+
+func (p *peer) handleMessages() {
+	for msg := range p.msgs {
+		msgData, err := json.Marshal(msg)
+		if err != nil {
+			slog.Error("failed to marshal message for subscribers", "error", err)
+		}
+
+		dataLen := uint64(len(msgData))
+
+		err = binary.Write(p.conn, binary.BigEndian, dataLen)
+		if err != nil {
+			slog.Error("failed to send data length", "error", err, "peer", p.addr())
+			continue
+		}
+
+		_, err = p.Write(msgData)
+		if err != nil {
+			slog.Error("failed to write to peer", "error", err, "peer", p.addr())
+			continue
+		}
+	}
 }
 
 func (p *peer) addr() net.Addr {
