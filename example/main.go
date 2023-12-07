@@ -32,7 +32,7 @@ func main() {
 		panic(err)
 	}
 
-	for msg := range consumer.Msgs {
+	for msg := range consumer.Messages() {
 		slog.Info("received message", "message", string(msg.Data))
 	}
 

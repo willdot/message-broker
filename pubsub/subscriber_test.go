@@ -107,7 +107,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	var receivedMessages []messagebroker.Message
 	consumerFinCh := make(chan struct{})
 	go func() {
-		for msg := range consumer.Msgs {
+		for msg := range consumer.Messages() {
 			receivedMessages = append(receivedMessages, msg)
 		}
 
@@ -180,7 +180,7 @@ func TestPublishAndSubscribe(t *testing.T) {
 
 	consumerFinCh := make(chan struct{})
 	go func() {
-		for msg := range consumer.Msgs {
+		for msg := range consumer.Messages() {
 			receivedMessages = append(receivedMessages, msg)
 		}
 

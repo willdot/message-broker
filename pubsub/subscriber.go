@@ -132,16 +132,20 @@ func (s *Subscriber) UnsubscribeToTopics(topicNames []string) error {
 // Consumer allows the consumption of messages. It is thread safe to range over the Msgs channel to consume. If during the consumer
 // receiving messages from the server an error occurs, it will be stored in Err
 type Consumer struct {
-	Msgs chan messagebroker.Message
+	msgs chan messagebroker.Message
 	// TODO: better error handling? Maybe a channel of errors?
 	Err error
+}
+
+func (c *Consumer) Messages() <-chan messagebroker.Message {
+	return c.msgs
 }
 
 // Consume will create a consumer and start it running in a go routine. You can then use the Msgs channel of the consumer
 // to read the messages
 func (s *Subscriber) Consume(ctx context.Context) *Consumer {
 	consumer := &Consumer{
-		Msgs: make(chan messagebroker.Message),
+		msgs: make(chan messagebroker.Message),
 	}
 
 	go s.consume(ctx, consumer)
@@ -150,7 +154,7 @@ func (s *Subscriber) Consume(ctx context.Context) *Consumer {
 }
 
 func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
-	defer close(consumer.Msgs)
+	defer close(consumer.msgs)
 	for {
 		if ctx.Err() != nil {
 			return
@@ -163,7 +167,7 @@ func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
 		}
 
 		if msg != nil {
-			consumer.Msgs <- *msg
+			consumer.msgs <- *msg
 		}
 	}
 }
