@@ -96,7 +96,61 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	err = sub.UnsubscribeToTopics([]string{"topic a"})
 	require.NoError(t, err)
 
-	// TODO: is there a way to check? Maybe start consuming and publish to the topic unsubscribed from??
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+	})
+
+	consumer := sub.Consume(ctx)
+	require.NoError(t, err)
+
+	var receivedMessages []messagebroker.Message
+	consumerFinCh := make(chan struct{})
+	go func() {
+		for msg := range consumer.Msgs {
+			receivedMessages = append(receivedMessages, msg)
+		}
+
+		require.NoError(t, err)
+		consumerFinCh <- struct{}{}
+	}()
+
+	// publish a message to both topics and check the subscriber only gets the message from the 1 topic
+	// and not the unsubscribed topic
+
+	publisher, err := NewPublisher("localhost:3000")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		publisher.Close()
+	})
+
+	msg := messagebroker.Message{
+		Topic: "topic a",
+		Data:  []byte("hello world"),
+	}
+
+	err = publisher.PublishMessage(msg)
+	require.NoError(t, err)
+
+	msg.Topic = "topic b"
+	err = publisher.PublishMessage(msg)
+	require.NoError(t, err)
+
+	cancel()
+
+	// give the consumer some time to read the messages -- TODO: make better!
+	time.Sleep(time.Millisecond * 500)
+	cancel()
+
+	select {
+	case <-consumerFinCh:
+		break
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for consumer to read messages")
+	}
+
+	assert.Len(t, receivedMessages, 1)
+	assert.Equal(t, "topic b", receivedMessages[0].Topic)
 }
 
 func TestPublishAndSubscribe(t *testing.T) {
