@@ -3,10 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
-	"strings"
 	"sync"
 
 	"github.com/willdot/messagebroker"
@@ -56,11 +56,12 @@ func (s *Server) start(ctx context.Context) {
 	for {
 		conn, err := s.lis.Accept()
 		if err != nil {
-			slog.Error("listener failed to accept", "error", err)
-			// TODO: see if there's a better way to check for this error
-			if strings.Contains(err.Error(), "use of closed network connection") {
+			if errors.Is(err, net.ErrClosed) {
+				slog.Info("listener closed")
 				return
 			}
+			slog.Error("listener failed to accept", "error", err)
+			continue
 		}
 
 		go s.handleConn(conn)
