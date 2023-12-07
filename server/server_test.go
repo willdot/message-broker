@@ -29,7 +29,7 @@ func createServerWithExistingTopic(t *testing.T, topicName string) *Server {
 	srv := createServer(t)
 	srv.topics[topicName] = topic{
 		name:          topicName,
-		subscriptions: make(map[net.Addr]Subscriber),
+		subscriptions: make(map[net.Addr]subscriber),
 	}
 
 	return srv

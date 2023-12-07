@@ -1,19 +1,16 @@
-package subscriber_test
+package pubsub
 
 import (
 	"context"
-	"encoding/binary"
-	"encoding/json"
 	"fmt"
-	"net"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/willdot/messagebroker"
+
 	"github.com/willdot/messagebroker/server"
-	"github.com/willdot/messagebroker/subscriber"
 )
 
 const (
@@ -29,10 +26,10 @@ func createServer(t *testing.T) {
 	})
 }
 
-func TestNew(t *testing.T) {
+func TestNewSubscriber(t *testing.T) {
 	createServer(t)
 
-	sub, err := subscriber.New(serverAddr)
+	sub, err := NewSubscriber(serverAddr)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -40,17 +37,35 @@ func TestNew(t *testing.T) {
 	})
 }
 
-func TestNewInvalidServerAddr(t *testing.T) {
+func TestNewSubscriberInvalidServerAddr(t *testing.T) {
 	createServer(t)
 
-	_, err := subscriber.New(":123456")
+	_, err := NewSubscriber(":123456")
+	require.Error(t, err)
+}
+
+func TestNewPublisher(t *testing.T) {
+	createServer(t)
+
+	sub, err := NewPublisher(serverAddr)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		sub.Close()
+	})
+}
+
+func TestNewPublisherInvalidServerAddr(t *testing.T) {
+	createServer(t)
+
+	_, err := NewPublisher(":123456")
 	require.Error(t, err)
 }
 
 func TestSubscribeToTopics(t *testing.T) {
 	createServer(t)
 
-	sub, err := subscriber.New(serverAddr)
+	sub, err := NewSubscriber(serverAddr)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -63,10 +78,10 @@ func TestSubscribeToTopics(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestSubscribeConsumeFromSubscription(t *testing.T) {
+func TestPublishAndSubscribe(t *testing.T) {
 	createServer(t)
 
-	sub, err := subscriber.New(serverAddr)
+	sub, err := NewSubscriber(serverAddr)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -98,11 +113,11 @@ func TestSubscribeConsumeFromSubscription(t *testing.T) {
 		consumerFinCh <- struct{}{}
 	}()
 
-	publisherConn, err := net.Dial("tcp", "localhost:3000")
+	publisher, err := NewPublisher("localhost:3000")
 	require.NoError(t, err)
-
-	err = binary.Write(publisherConn, binary.BigEndian, server.Publish)
-	require.NoError(t, err)
+	t.Cleanup(func() {
+		publisher.Close()
+	})
 
 	// send some messages
 	sentMessages := make([]messagebroker.Message, 0, 10)
@@ -114,14 +129,8 @@ func TestSubscribeConsumeFromSubscription(t *testing.T) {
 
 		sentMessages = append(sentMessages, msg)
 
-		b, err := json.Marshal(msg)
+		err = publisher.PublishMessage(msg)
 		require.NoError(t, err)
-
-		err = binary.Write(publisherConn, binary.BigEndian, uint32(len(b)))
-		require.NoError(t, err)
-		n, err := publisherConn.Write(b)
-		require.NoError(t, err)
-		require.Equal(t, len(b), n)
 	}
 
 	// give the consumer some time to read the messages -- TODO: make better!

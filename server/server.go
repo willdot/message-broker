@@ -21,6 +21,7 @@ const (
 	Publish     Action = 3
 )
 
+// Server accepts subscribe and publish connections and passes messages around
 type Server struct {
 	addr string
 	lis  net.Listener
@@ -29,6 +30,7 @@ type Server struct {
 	topics map[string]topic
 }
 
+// New creates and starts a new server
 func New(ctx context.Context, addr string) (*Server, error) {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -45,6 +47,7 @@ func New(ctx context.Context, addr string) (*Server, error) {
 	return srv, nil
 }
 
+// Shutdown will cleanly shutdown the server
 func (s *Server) Shutdown() error {
 	return s.lis.Close()
 }
@@ -231,7 +234,7 @@ func (s *Server) addSubsciberToTopic(topicName string, peer peer) {
 		t = newTopic(topicName)
 	}
 
-	t.subscriptions[peer.addr()] = Subscriber{
+	t.subscriptions[peer.addr()] = subscriber{
 		peer:          peer,
 		currentOffset: 0,
 	}

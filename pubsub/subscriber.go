@@ -1,4 +1,4 @@
-package subscriber
+package pubsub
 
 import (
 	"context"
@@ -13,11 +13,13 @@ import (
 	"github.com/willdot/messagebroker/server"
 )
 
+// Subscriber allows subscriptions to a server and the consumption of messages
 type Subscriber struct {
 	conn net.Conn
 }
 
-func New(addr string) (*Subscriber, error) {
+// NewSubscriber will connect to the server at the given address
+func NewSubscriber(addr string) (*Subscriber, error) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)
@@ -28,10 +30,12 @@ func New(addr string) (*Subscriber, error) {
 	}, nil
 }
 
+// Close cleanly shuts down the subscriber
 func (s *Subscriber) Close() error {
 	return s.conn.Close()
 }
 
+// SubscribeToTopics will subscribe to the provided topics
 func (s *Subscriber) SubscribeToTopics(topicNames []string) error {
 	err := binary.Write(s.conn, binary.BigEndian, server.Subscribe)
 	if err != nil {
@@ -66,12 +70,16 @@ func (s *Subscriber) SubscribeToTopics(topicNames []string) error {
 	return nil
 }
 
+// Consumer allows the consumption of messages. It is thread safe to range over the Msgs channel to consume. If during the consumer
+// receiving messages from the server an error occurs, it will be stored in Err
 type Consumer struct {
 	Msgs chan messagebroker.Message
-	Err  error
+	// TODO: better error handling? Maybe a channel of errors?
+	Err error
 }
 
-// TODO: maybe buffer the message channel up?
+// Consume will create a consumer and start it running in a go routine. You can then use the Msgs channel of the consumer
+// to read the messages
 func (s *Subscriber) Consume(ctx context.Context) *Consumer {
 	consumer := &Consumer{
 		Msgs: make(chan messagebroker.Message),

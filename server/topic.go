@@ -11,14 +11,14 @@ import (
 
 type topic struct {
 	name          string
-	subscriptions map[net.Addr]Subscriber
+	subscriptions map[net.Addr]subscriber
 	mu            sync.Mutex
 }
 
 func newTopic(name string) topic {
 	return topic{
 		name:          name,
-		subscriptions: make(map[net.Addr]Subscriber),
+		subscriptions: make(map[net.Addr]subscriber),
 	}
 }
 
@@ -41,7 +41,7 @@ func (t *topic) sendMessageToSubscribers(msg messagebroker.Message) {
 	}
 
 	for addr, subscriber := range subscribers {
-		err := subscriber.SendMessage(msgData)
+		err := subscriber.sendMessage(msgData)
 		if err != nil {
 			slog.Error("failed to send to message", "error", err, "peer", addr)
 			continue
