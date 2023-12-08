@@ -214,7 +214,7 @@ func (s *Server) handlePublish(peer peer) {
 		op := func(conn net.Conn) error {
 			dataLen, err := dataLength(conn)
 			if err != nil {
-				slog.Error(err.Error(), "peer", peer.addr())
+				slog.Error("failed to read data length", "error", err, "peer", peer.addr())
 				writeStatus(Error, "invalid data length of data provided", conn)
 				return nil
 			}

@@ -1,11 +1,8 @@
 package server
 
 import (
-	"log/slog"
 	"net"
 	"sync"
-
-	"github.com/google/uuid"
 )
 
 // Status represents the status of a request
@@ -33,13 +30,11 @@ func (s Status) String() string {
 type peer struct {
 	conn   net.Conn
 	connMu sync.Mutex
-	name   string
 }
 
 func newPeer(conn net.Conn) peer {
 	return peer{
 		conn: conn,
-		name: uuid.New().String(),
 	}
 }
 
@@ -50,13 +45,8 @@ func (p *peer) addr() net.Addr {
 type connOpp func(conn net.Conn) error
 
 func (p *peer) connOperation(op connOpp, from string) error {
-	slog.Info("operation running", "from", from, "peer", p.conn.RemoteAddr(), "name", p.name, "mu addr", &p.connMu)
-
 	p.connMu.Lock()
-	err := op(p.conn)
-	p.connMu.Unlock()
+	defer p.connMu.Unlock()
 
-	slog.Info("operation finished", "from", from, "peer", p.conn.RemoteAddr(), "name", p.name, "mu addr", &p.connMu)
-
-	return err
+	return op(p.conn)
 }

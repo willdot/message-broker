@@ -215,8 +215,8 @@ func TestInvalidTopicDataPublished(t *testing.T) {
 func TestSendsDataToTopicSubscribers(t *testing.T) {
 	_ = createServer(t)
 
-	subscribers := make([]net.Conn, 0, 1)
-	for i := 0; i < 1; i++ {
+	subscribers := make([]net.Conn, 0, 10)
+	for i := 0; i < 10; i++ {
 		subscriberConn := createConnectionAndSubscribe(t, []string{topicA, topicB})
 
 		subscribers = append(subscribers, subscriberConn)
