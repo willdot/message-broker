@@ -8,17 +8,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/willdot/messagebroker"
 
 	"github.com/willdot/messagebroker/server"
 )
 
 const (
-	serverAddr = ":3000"
+	serverAddr = ":9999"
+	topicA     = "topic a"
+	topicB     = "topic b"
 )
 
 func createServer(t *testing.T) {
-	server, err := server.New(context.Background(), serverAddr)
+	server, err := server.New(serverAddr)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -72,7 +73,7 @@ func TestSubscribeToTopics(t *testing.T) {
 		sub.Close()
 	})
 
-	topics := []string{"topic a", "topic b"}
+	topics := []string{topicA, topicB}
 
 	err = sub.SubscribeToTopics(topics)
 	require.NoError(t, err)
@@ -88,12 +89,12 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 		sub.Close()
 	})
 
-	topics := []string{"topic a", "topic b"}
+	topics := []string{topicA, topicB}
 
 	err = sub.SubscribeToTopics(topics)
 	require.NoError(t, err)
 
-	err = sub.UnsubscribeToTopics([]string{"topic a"})
+	err = sub.UnsubscribeToTopics([]string{topicA})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -104,7 +105,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	consumer := sub.Consume(ctx)
 	require.NoError(t, err)
 
-	var receivedMessages []messagebroker.Message
+	var receivedMessages []Message
 	consumerFinCh := make(chan struct{})
 	go func() {
 		for msg := range consumer.Messages() {
@@ -118,28 +119,24 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	// publish a message to both topics and check the subscriber only gets the message from the 1 topic
 	// and not the unsubscribed topic
 
-	publisher, err := NewPublisher("localhost:3000")
+	publisher, err := NewPublisher("localhost:9999")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		publisher.Close()
 	})
 
-	msg := messagebroker.Message{
-		Topic: "topic a",
+	msg := Message{
+		Topic: topicA,
 		Data:  []byte("hello world"),
 	}
 
 	err = publisher.PublishMessage(msg)
 	require.NoError(t, err)
 
-	msg.Topic = "topic b"
+	msg.Topic = topicB
 	err = publisher.PublishMessage(msg)
 	require.NoError(t, err)
 
-	cancel()
-
-	// give the consumer some time to read the messages -- TODO: make better!
-	time.Sleep(time.Millisecond * 500)
 	cancel()
 
 	select {
@@ -150,7 +147,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	}
 
 	assert.Len(t, receivedMessages, 1)
-	assert.Equal(t, "topic b", receivedMessages[0].Topic)
+	assert.Equal(t, topicB, receivedMessages[0].Topic)
 }
 
 func TestPublishAndSubscribe(t *testing.T) {
@@ -163,7 +160,7 @@ func TestPublishAndSubscribe(t *testing.T) {
 		sub.Close()
 	})
 
-	topics := []string{"topic a", "topic b"}
+	topics := []string{topicA, topicB}
 
 	err = sub.SubscribeToTopics(topics)
 	require.NoError(t, err)
@@ -176,7 +173,7 @@ func TestPublishAndSubscribe(t *testing.T) {
 	consumer := sub.Consume(ctx)
 	require.NoError(t, err)
 
-	var receivedMessages []messagebroker.Message
+	var receivedMessages []Message
 
 	consumerFinCh := make(chan struct{})
 	go func() {
@@ -188,17 +185,17 @@ func TestPublishAndSubscribe(t *testing.T) {
 		consumerFinCh <- struct{}{}
 	}()
 
-	publisher, err := NewPublisher("localhost:3000")
+	publisher, err := NewPublisher("localhost:9999")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		publisher.Close()
 	})
 
 	// send some messages
-	sentMessages := make([]messagebroker.Message, 0, 10)
+	sentMessages := make([]Message, 0, 10)
 	for i := 0; i < 10; i++ {
-		msg := messagebroker.Message{
-			Topic: "topic a",
+		msg := Message{
+			Topic: topicA,
 			Data:  []byte(fmt.Sprintf("message %d", i)),
 		}
 

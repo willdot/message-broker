@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -11,11 +10,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/willdot/messagebroker"
+)
+
+const (
+	topicA = "topic a"
+	topicB = "topic b"
+	topicC = "topic c"
+
+	serverAddr = ":6666"
 )
 
 func createServer(t *testing.T) *Server {
-	srv, err := New(context.Background(), ":3000")
+	srv, err := New(serverAddr)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -36,7 +42,7 @@ func createServerWithExistingTopic(t *testing.T, topicName string) *Server {
 }
 
 func createConnectionAndSubscribe(t *testing.T, topics []string) net.Conn {
-	conn, err := net.Dial("tcp", "localhost:3000")
+	conn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
 	require.NoError(t, err)
 
 	err = binary.Write(conn, binary.BigEndian, Subscribe)
@@ -64,29 +70,29 @@ func createConnectionAndSubscribe(t *testing.T, topics []string) net.Conn {
 func TestSubscribeToTopics(t *testing.T) {
 	// create a server with an existing topic so we can test subscribing to a new and
 	// existing topic
-	srv := createServerWithExistingTopic(t, "topic a")
+	srv := createServerWithExistingTopic(t, topicA)
 
-	_ = createConnectionAndSubscribe(t, []string{"topic a", "topic b"})
+	_ = createConnectionAndSubscribe(t, []string{topicA, topicB})
 
 	assert.Len(t, srv.topics, 2)
-	assert.Len(t, srv.topics["topic a"].subscriptions, 1)
-	assert.Len(t, srv.topics["topic b"].subscriptions, 1)
+	assert.Len(t, srv.topics[topicA].subscriptions, 1)
+	assert.Len(t, srv.topics[topicB].subscriptions, 1)
 }
 
 func TestUnsubscribesFromTopic(t *testing.T) {
-	srv := createServerWithExistingTopic(t, "topic a")
+	srv := createServerWithExistingTopic(t, topicA)
 
-	conn := createConnectionAndSubscribe(t, []string{"topic a", "topic b", "topic c"})
+	conn := createConnectionAndSubscribe(t, []string{topicA, topicB, topicC})
 
 	assert.Len(t, srv.topics, 3)
-	assert.Len(t, srv.topics["topic a"].subscriptions, 1)
-	assert.Len(t, srv.topics["topic b"].subscriptions, 1)
-	assert.Len(t, srv.topics["topic c"].subscriptions, 1)
+	assert.Len(t, srv.topics[topicA].subscriptions, 1)
+	assert.Len(t, srv.topics[topicB].subscriptions, 1)
+	assert.Len(t, srv.topics[topicC].subscriptions, 1)
 
 	err := binary.Write(conn, binary.BigEndian, Unsubscribe)
 	require.NoError(t, err)
 
-	topics := []string{"topic a", "topic b"}
+	topics := []string{topicA, topicB}
 	rawTopics, err := json.Marshal(topics)
 	require.NoError(t, err)
 
@@ -104,25 +110,25 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	assert.Equal(t, expectedRes, int(resp))
 
 	assert.Len(t, srv.topics, 3)
-	assert.Len(t, srv.topics["topic a"].subscriptions, 0)
-	assert.Len(t, srv.topics["topic b"].subscriptions, 0)
-	assert.Len(t, srv.topics["topic c"].subscriptions, 1)
+	assert.Len(t, srv.topics[topicA].subscriptions, 0)
+	assert.Len(t, srv.topics[topicB].subscriptions, 0)
+	assert.Len(t, srv.topics[topicC].subscriptions, 1)
 }
 
 func TestSubscriberClosesWithoutUnsubscribing(t *testing.T) {
 	srv := createServer(t)
 
-	conn := createConnectionAndSubscribe(t, []string{"topic a", "topic b"})
+	conn := createConnectionAndSubscribe(t, []string{topicA, topicB})
 
 	assert.Len(t, srv.topics, 2)
-	assert.Len(t, srv.topics["topic a"].subscriptions, 1)
-	assert.Len(t, srv.topics["topic b"].subscriptions, 1)
+	assert.Len(t, srv.topics[topicA].subscriptions, 1)
+	assert.Len(t, srv.topics[topicB].subscriptions, 1)
 
 	// close the conn
 	err := conn.Close()
 	require.NoError(t, err)
 
-	publisherConn, err := net.Dial("tcp", "localhost:3000")
+	publisherConn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
 	require.NoError(t, err)
 
 	err = binary.Write(publisherConn, binary.BigEndian, Publish)
@@ -137,14 +143,14 @@ func TestSubscriberClosesWithoutUnsubscribing(t *testing.T) {
 	require.Equal(t, len(data), n)
 
 	assert.Len(t, srv.topics, 2)
-	assert.Len(t, srv.topics["topic a"].subscriptions, 0)
-	assert.Len(t, srv.topics["topic b"].subscriptions, 0)
+	assert.Len(t, srv.topics[topicA].subscriptions, 0)
+	assert.Len(t, srv.topics[topicB].subscriptions, 0)
 }
 
 func TestInvalidAction(t *testing.T) {
 	_ = createServer(t)
 
-	conn, err := net.Dial("tcp", "localhost:3000")
+	conn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
 	require.NoError(t, err)
 
 	err = binary.Write(conn, binary.BigEndian, uint8(99))
@@ -170,24 +176,21 @@ func TestInvalidAction(t *testing.T) {
 	assert.Equal(t, expectedMessage, string(buf))
 }
 
-func TestInvalidMessagePublished(t *testing.T) {
+func TestInvalidTopicDataPublished(t *testing.T) {
 	_ = createServer(t)
 
-	publisherConn, err := net.Dial("tcp", "localhost:3000")
+	publisherConn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
 	require.NoError(t, err)
 
 	err = binary.Write(publisherConn, binary.BigEndian, Publish)
 	require.NoError(t, err)
 
-	// send some data
-	data := []byte("this isn't wrapped in a message type")
-
-	// send data length first
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(data)))
+	// send topic
+	topic := topicA
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
 	require.NoError(t, err)
-	n, err := publisherConn.Write(data)
+	_, err = publisherConn.Write([]byte(topic))
 	require.NoError(t, err)
-	require.Equal(t, len(data), n)
 
 	expectedRes := Error
 
@@ -196,7 +199,7 @@ func TestInvalidMessagePublished(t *testing.T) {
 
 	assert.Equal(t, expectedRes, int(resp))
 
-	expectedMessage := "invalid message"
+	expectedMessage := "topic data does not contain 'topic:' prefix"
 
 	var dataLen uint32
 	err = binary.Read(publisherConn, binary.BigEndian, &dataLen)
@@ -212,37 +215,45 @@ func TestInvalidMessagePublished(t *testing.T) {
 func TestSendsDataToTopicSubscribers(t *testing.T) {
 	_ = createServer(t)
 
-	subscribers := make([]net.Conn, 0, 5)
-	for i := 0; i < 5; i++ {
-		subscriberConn := createConnectionAndSubscribe(t, []string{"topic a", "topic b"})
+	subscribers := make([]net.Conn, 0, 1)
+	for i := 0; i < 1; i++ {
+		subscriberConn := createConnectionAndSubscribe(t, []string{topicA, topicB})
 
 		subscribers = append(subscribers, subscriberConn)
 	}
 
-	publisherConn, err := net.Dial("tcp", "localhost:3000")
+	publisherConn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
 	require.NoError(t, err)
 
 	err = binary.Write(publisherConn, binary.BigEndian, Publish)
 	require.NoError(t, err)
 
-	// send a message
-	msg := messagebroker.Message{
-		Topic: "topic a",
-		Data:  []byte("hello world"),
-	}
+	topic := fmt.Sprintf("topic:%s", topicA)
+	messageData := "hello world"
 
-	rawMsg, err := json.Marshal(msg)
+	// send topic first
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
+	require.NoError(t, err)
+	_, err = publisherConn.Write([]byte(topic))
 	require.NoError(t, err)
 
-	// send data length first
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(rawMsg)))
+	// now send the data
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(messageData)))
 	require.NoError(t, err)
-	n, err := publisherConn.Write(rawMsg)
+	n, err := publisherConn.Write([]byte(messageData))
 	require.NoError(t, err)
-	require.Equal(t, len(rawMsg), n)
+	require.Equal(t, len(messageData), n)
 
 	// check the subsribers got the data
 	for _, conn := range subscribers {
+		var topicLen uint64
+		err = binary.Read(conn, binary.BigEndian, &topicLen)
+		require.NoError(t, err)
+
+		topicBuf := make([]byte, topicLen)
+		_, err = conn.Read(topicBuf)
+		require.NoError(t, err)
+		assert.Equal(t, topicA, string(topicBuf))
 
 		var dataLen uint64
 		err = binary.Read(conn, binary.BigEndian, &dataLen)
@@ -253,14 +264,14 @@ func TestSendsDataToTopicSubscribers(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int(dataLen), n)
 
-		assert.Equal(t, rawMsg, buf)
+		assert.Equal(t, messageData, string(buf))
 	}
 }
 
 func TestPublishMultipleTimes(t *testing.T) {
 	_ = createServer(t)
 
-	publisherConn, err := net.Dial("tcp", "localhost:3000")
+	publisherConn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
 	require.NoError(t, err)
 
 	err = binary.Write(publisherConn, binary.BigEndian, Publish)
@@ -268,23 +279,24 @@ func TestPublishMultipleTimes(t *testing.T) {
 
 	messages := make([][]byte, 0, 10)
 	for i := 0; i < 10; i++ {
-		msg := messagebroker.Message{
-			Topic: "topic a",
-			Data:  []byte(fmt.Sprintf("message %d", i)),
-		}
-
-		rawMsg, err := json.Marshal(msg)
-		require.NoError(t, err)
-
-		messages = append(messages, rawMsg)
+		messages = append(messages, []byte(fmt.Sprintf("message %d", i)))
 	}
 
 	subscribeFinCh := make(chan struct{})
 	// create a subscriber that will read messages
-	subscriberConn := createConnectionAndSubscribe(t, []string{"topic a", "topic b"})
+	subscriberConn := createConnectionAndSubscribe(t, []string{topicA, topicB})
 	go func() {
 		// check subscriber got all messages
 		for _, msg := range messages {
+			var topicLen uint64
+			err = binary.Read(subscriberConn, binary.BigEndian, &topicLen)
+			require.NoError(t, err)
+
+			topicBuf := make([]byte, topicLen)
+			_, err = subscriberConn.Read(topicBuf)
+			require.NoError(t, err)
+			assert.Equal(t, topicA, string(topicBuf))
+
 			var dataLen uint64
 			err = binary.Read(subscriberConn, binary.BigEndian, &dataLen)
 			require.NoError(t, err)
@@ -300,12 +312,20 @@ func TestPublishMultipleTimes(t *testing.T) {
 		subscribeFinCh <- struct{}{}
 	}()
 
+	topic := fmt.Sprintf("topic:%s", topicA)
+
 	// send multiple messages
 	for _, msg := range messages {
-		// send data length first
+		// send topic first
+		err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
+		require.NoError(t, err)
+		_, err = publisherConn.Write([]byte(topic))
+		require.NoError(t, err)
+
+		// now send the data
 		err = binary.Write(publisherConn, binary.BigEndian, uint32(len(msg)))
 		require.NoError(t, err)
-		n, err := publisherConn.Write(msg)
+		n, err := publisherConn.Write([]byte(msg))
 		require.NoError(t, err)
 		require.Equal(t, len(msg), n)
 	}
