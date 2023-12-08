@@ -78,25 +78,25 @@ func (s *Server) handleConn(conn net.Conn) {
 
 	switch action {
 	case Subscribe:
-		s.handleSubscribe(peer)
+		s.handleSubscribe(&peer)
 	case Unsubscribe:
-		s.handleUnsubscribe(peer)
+		s.handleUnsubscribe(&peer)
 	case Publish:
-		s.handlePublish(peer)
+		s.handlePublish(&peer)
 	default:
 		slog.Error("unknown action", "action", action, "peer", peer.addr())
 		writeStatus(Error, "unknown action", peer.conn)
 	}
 }
 
-func (s *Server) handleSubscribe(peer peer) {
+func (s *Server) handleSubscribe(peer *peer) {
 	// subscribe the peer to the topic
-	s.subscribePeerToTopic(&peer)
+	s.subscribePeerToTopic(peer)
 
 	// keep handling the peers connection, getting the action from the peer when it wishes to do something else.
 	// once the peers connection ends, it will be unsubscribed from all topics and returned
 	for {
-		action, err := readAction(peer)
+		action, err := readAction(*peer)
 		if err != nil {
 			var neterr net.Error
 			if errors.As(err, &neterr) && neterr.Timeout() {
@@ -106,14 +106,14 @@ func (s *Server) handleSubscribe(peer peer) {
 			// TODO: see if there's a way to check if the peers connection has been ended etc
 			slog.Error("failed to read action from subscriber", "error", err, "peer", peer.addr())
 
-			s.unsubscribePeerFromAllTopics(peer)
+			s.unsubscribePeerFromAllTopics(*peer)
 
 			return
 		}
 
 		switch action {
 		case Subscribe:
-			s.subscribePeerToTopic(&peer)
+			s.subscribePeerToTopic(peer)
 		case Unsubscribe:
 			s.handleUnsubscribe(peer)
 		default:
@@ -163,7 +163,7 @@ func (s *Server) subscribePeerToTopic(peer *peer) {
 	_ = peer.connOperation(op, "subscribe peer to topic")
 }
 
-func (s *Server) handleUnsubscribe(peer peer) {
+func (s *Server) handleUnsubscribe(peer *peer) {
 	op := func(conn net.Conn) error {
 		// get the topics the peer wishes to unsubscribe from
 		dataLen, err := dataLength(conn)
@@ -193,7 +193,7 @@ func (s *Server) handleUnsubscribe(peer peer) {
 			return nil
 		}
 
-		s.unsubscribeToTopics(peer, topics)
+		s.unsubscribeToTopics(*peer, topics)
 		writeStatus(Unsubscribed, "", conn)
 
 		return nil
@@ -207,7 +207,7 @@ type messageToSend struct {
 	data  []byte
 }
 
-func (s *Server) handlePublish(peer peer) {
+func (s *Server) handlePublish(peer *peer) {
 	for {
 		var message *messageToSend
 
@@ -338,6 +338,7 @@ func (s *Server) getTopic(topicName string) *topic {
 	return nil
 }
 
+// TODO: work out why this can't take a pointer to the peer
 func readAction(peer peer) (Action, error) {
 	var action Action
 	op := func(conn net.Conn) error {
