@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+
+	"github.com/willdot/messagebroker/server/peer"
 )
 
 type topic struct {
@@ -15,7 +17,7 @@ type topic struct {
 }
 
 type subscriber struct {
-	peer          *peer
+	peer          *peer.Peer
 	currentOffset int
 }
 
@@ -40,9 +42,7 @@ func (t *topic) sendMessageToSubscribers(msgData []byte) {
 	t.mu.Unlock()
 
 	for addr, subscriber := range subscribers {
-		//sendMessageOpFunc := sendMessageOp(t.name, msgData)
-
-		err := subscriber.peer.connOperation(sendMessageOp(t.name, msgData), "send message to subscribers")
+		err := subscriber.peer.ConnOperation(sendMessageOp(t.name, msgData))
 		if err != nil {
 			slog.Error("failed to send to message", "error", err, "peer", addr)
 			return
@@ -50,7 +50,7 @@ func (t *topic) sendMessageToSubscribers(msgData []byte) {
 	}
 }
 
-func sendMessageOp(topic string, data []byte) connOpp {
+func sendMessageOp(topic string, data []byte) peer.ConnOpp {
 	return func(conn net.Conn) error {
 		topicLen := uint64(len(topic))
 		err := binary.Write(conn, binary.BigEndian, topicLen)

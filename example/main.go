@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/willdot/messagebroker/pubsub"
 )
@@ -59,5 +60,7 @@ func sendMessages() {
 			slog.Error("failed to publish message", "error", err)
 			continue
 		}
+
+		time.Sleep(time.Millisecond * 500)
 	}
 }
