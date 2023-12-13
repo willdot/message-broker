@@ -32,8 +32,8 @@ type peer struct {
 	connMu sync.Mutex
 }
 
-func newPeer(conn net.Conn) peer {
-	return peer{
+func newPeer(conn net.Conn) *peer {
+	return &peer{
 		conn: conn,
 	}
 }

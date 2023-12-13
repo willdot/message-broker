@@ -70,7 +70,8 @@ func (s *Server) start() {
 
 func (s *Server) handleConn(conn net.Conn) {
 	peer := newPeer(conn)
-	action, err := readAction(peer)
+
+	action, err := readAction(peer, 0)
 	if err != nil {
 		slog.Error("failed to read action from peer", "error", err, "peer", peer.addr())
 		return
@@ -78,11 +79,11 @@ func (s *Server) handleConn(conn net.Conn) {
 
 	switch action {
 	case Subscribe:
-		s.handleSubscribe(&peer)
+		s.handleSubscribe(peer)
 	case Unsubscribe:
-		s.handleUnsubscribe(&peer)
+		s.handleUnsubscribe(peer)
 	case Publish:
-		s.handlePublish(&peer)
+		s.handlePublish(peer)
 	default:
 		slog.Error("unknown action", "action", action, "peer", peer.addr())
 		writeStatus(Error, "unknown action", peer.conn)
@@ -96,7 +97,7 @@ func (s *Server) handleSubscribe(peer *peer) {
 	// keep handling the peers connection, getting the action from the peer when it wishes to do something else.
 	// once the peers connection ends, it will be unsubscribed from all topics and returned
 	for {
-		action, err := readAction(*peer)
+		action, err := readAction(peer, time.Millisecond*100)
 		if err != nil {
 			var neterr net.Error
 			if errors.As(err, &neterr) && neterr.Timeout() {
@@ -338,11 +339,12 @@ func (s *Server) getTopic(topicName string) *topic {
 	return nil
 }
 
-// TODO: work out why this can't take a pointer to the peer
-func readAction(peer peer) (Action, error) {
+func readAction(peer *peer, timeout time.Duration) (Action, error) {
 	var action Action
 	op := func(conn net.Conn) error {
-		conn.SetReadDeadline(time.Now().Add(time.Second))
+		if timeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(timeout))
+		}
 
 		err := binary.Read(conn, binary.BigEndian, &action)
 		if err != nil {
