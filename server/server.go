@@ -37,7 +37,7 @@ const (
 func (s Status) String() string {
 	switch s {
 	case Subscribed:
-		return "subsribed"
+		return "subscribed"
 	case Unsubscribed:
 		return "unsubscribed"
 	case Error:
@@ -97,6 +97,9 @@ func (s *Server) start() {
 func (s *Server) handleConn(conn net.Conn) {
 	peer := peer.New(conn)
 
+	slog.Info("handling connection", "peer", peer.Addr())
+	defer slog.Info("ending connection", "peer", peer.Addr())
+
 	action, err := readAction(peer, 0)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
@@ -119,6 +122,7 @@ func (s *Server) handleConn(conn net.Conn) {
 }
 
 func (s *Server) handleSubscribe(peer *peer.Peer) {
+	slog.Info("handling subscriber", "peer", peer.Addr())
 	// subscribe the peer to the topic
 	s.subscribePeerToTopic(peer)
 
@@ -197,6 +201,7 @@ func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
 }
 
 func (s *Server) handleUnsubscribe(peer *peer.Peer) {
+	slog.Info("handling unsubscriber", "peer", peer.Addr())
 	op := func(conn net.Conn) error {
 		// get the topics the peer wishes to unsubscribe from
 		dataLen, err := dataLength(conn)
@@ -241,6 +246,7 @@ type messageToSend struct {
 }
 
 func (s *Server) handlePublish(peer *peer.Peer) {
+	slog.Info("handling publisher", "peer", peer.Addr())
 	for {
 		var message *messageToSend
 
@@ -316,6 +322,7 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 }
 
 func (s *Server) subscribeToTopics(peer *peer.Peer, topics []string) {
+	slog.Info("subscribing peer to topics", "topics", topics, "peer", peer.Addr())
 	for _, topic := range topics {
 		s.addSubsciberToTopic(topic, peer)
 	}
@@ -339,6 +346,7 @@ func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer) {
 }
 
 func (s *Server) unsubscribeToTopics(peer *peer.Peer, topics []string) {
+	slog.Info("unsubscribing peer from topics", "topics", topics, "peer", peer.Addr())
 	for _, topic := range topics {
 		s.removeSubsciberFromTopic(topic, peer)
 	}
