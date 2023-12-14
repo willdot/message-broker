@@ -185,7 +185,7 @@ func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
 		return nil
 	}
 
-	_ = peer.ConnOperation(op)
+	_ = peer.RunConnOperation(op)
 }
 
 func (s *Server) handleUnsubscribe(peer *peer.Peer) {
@@ -224,7 +224,7 @@ func (s *Server) handleUnsubscribe(peer *peer.Peer) {
 		return nil
 	}
 
-	_ = peer.ConnOperation(op)
+	_ = peer.RunConnOperation(op)
 }
 
 type messageToSend struct {
@@ -287,7 +287,7 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 			return nil
 		}
 
-		_ = peer.ConnOperation(op)
+		_ = peer.RunConnOperation(op)
 
 		if message == nil {
 			continue
@@ -377,7 +377,7 @@ func readAction(peer *peer.Peer, timeout time.Duration) (Action, error) {
 		return nil
 	}
 
-	err := peer.ConnOperation(op)
+	err := peer.RunConnOperation(op)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read action from peer: %w", err)
 	}
@@ -391,7 +391,7 @@ func writeInvalidAction(peer *peer.Peer) {
 		return nil
 	}
 
-	_ = peer.ConnOperation(op)
+	_ = peer.RunConnOperation(op)
 }
 
 func dataLength(conn net.Conn) (uint32, error) {

@@ -42,7 +42,7 @@ func (t *topic) sendMessageToSubscribers(msgData []byte) {
 	t.mu.Unlock()
 
 	for addr, subscriber := range subscribers {
-		err := subscriber.peer.ConnOperation(sendMessageOp(t.name, msgData))
+		err := subscriber.peer.RunConnOperation(sendMessageOp(t.name, msgData))
 		if err != nil {
 			slog.Error("failed to send to message", "error", err, "peer", addr)
 			return
