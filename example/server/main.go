@@ -14,7 +14,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer srv.Shutdown()
+
+	defer func() {
+		_ = srv.Shutdown()
+	}()
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)

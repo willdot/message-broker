@@ -51,7 +51,7 @@ type Server struct {
 	lis  net.Listener
 
 	mu     sync.Mutex
-	topics map[string]topic
+	topics map[string]*topic
 }
 
 // New creates and starts a new server
@@ -63,7 +63,7 @@ func New(Addr string) (*Server, error) {
 
 	srv := &Server{
 		lis:    lis,
-		topics: map[string]topic{},
+		topics: map[string]*topic{},
 	}
 
 	go srv.start()
@@ -131,7 +131,7 @@ func (s *Server) handleSubscribe(peer *peer.Peer) {
 			// TODO: see if there's a way to check if the peers connection has been ended etc
 			slog.Error("failed to read action from subscriber", "error", err, "peer", peer.Addr())
 
-			s.unsubscribePeerFromAllTopics(*peer)
+			s.unsubscribePeerFromAllTopics(peer)
 
 			return
 		}
@@ -218,7 +218,7 @@ func (s *Server) handleUnsubscribe(peer *peer.Peer) {
 			return nil
 		}
 
-		s.unsubscribeToTopics(*peer, topics)
+		s.unsubscribeToTopics(peer, topics)
 		writeStatus(Unsubscribed, "", conn)
 
 		return nil
@@ -325,13 +325,13 @@ func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer) {
 	s.topics[topicName] = t
 }
 
-func (s *Server) unsubscribeToTopics(peer peer.Peer, topics []string) {
+func (s *Server) unsubscribeToTopics(peer *peer.Peer, topics []string) {
 	for _, topic := range topics {
 		s.removeSubsciberFromTopic(topic, peer)
 	}
 }
 
-func (s *Server) removeSubsciberFromTopic(topicName string, peer peer.Peer) {
+func (s *Server) removeSubsciberFromTopic(topicName string, peer *peer.Peer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -343,7 +343,7 @@ func (s *Server) removeSubsciberFromTopic(topicName string, peer peer.Peer) {
 	delete(t.subscriptions, peer.Addr())
 }
 
-func (s *Server) unsubscribePeerFromAllTopics(peer peer.Peer) {
+func (s *Server) unsubscribePeerFromAllTopics(peer *peer.Peer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -357,7 +357,7 @@ func (s *Server) getTopic(topicName string) *topic {
 	defer s.mu.Unlock()
 
 	if topic, ok := s.topics[topicName]; ok {
-		return &topic
+		return topic
 	}
 
 	return nil
@@ -367,7 +367,10 @@ func readAction(peer *peer.Peer, timeout time.Duration) (Action, error) {
 	var action Action
 	op := func(conn net.Conn) error {
 		if timeout > 0 {
-			conn.SetReadDeadline(time.Now().Add(timeout))
+			err := conn.SetReadDeadline(time.Now().Add(timeout))
+			if err != nil {
+				slog.Error("failed to set connection read deadline", "error", err, "peer", peer.Addr())
+			}
 		}
 
 		err := binary.Read(conn, binary.BigEndian, &action)

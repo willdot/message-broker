@@ -23,7 +23,7 @@ func createServer(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		server.Shutdown()
+		_ = server.Shutdown()
 	})
 }
 
