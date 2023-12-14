@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/willdot/messagebroker/server/peer"
@@ -97,7 +99,9 @@ func (s *Server) handleConn(conn net.Conn) {
 
 	action, err := readAction(peer, 0)
 	if err != nil {
-		slog.Error("failed to read action from peer", "error", err, "peer", peer.Addr())
+		if !errors.Is(err, io.EOF) {
+			slog.Error("failed to read action from peer", "error", err, "peer", peer.Addr())
+		}
 		return
 	}
 
@@ -128,8 +132,10 @@ func (s *Server) handleSubscribe(peer *peer.Peer) {
 				time.Sleep(time.Second)
 				continue
 			}
-			// TODO: see if there's a way to check if the peers connection has been ended etc
-			slog.Error("failed to read action from subscriber", "error", err, "peer", peer.Addr())
+
+			if !errors.Is(err, io.EOF) {
+				slog.Error("failed to read action from subscriber", "error", err, "peer", peer.Addr())
+			}
 
 			s.unsubscribePeerFromAllTopics(peer)
 
@@ -239,6 +245,9 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 		op := func(conn net.Conn) error {
 			dataLen, err := dataLength(conn)
 			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
 				slog.Error("failed to read data length", "error", err, "peer", peer.Addr())
 				writeStatus(Error, "invalid data length of data provided", conn)
 				return nil
@@ -409,7 +418,9 @@ func dataLength(conn net.Conn) (uint32, error) {
 func writeStatus(status Status, message string, conn net.Conn) {
 	err := binary.Write(conn, binary.BigEndian, status)
 	if err != nil {
-		slog.Error("failed to write status to peers connection", "error", err, "peer", conn.RemoteAddr())
+		if !errors.Is(err, syscall.EPIPE) {
+			slog.Error("failed to write status to peers connection", "error", err, "peer", conn.RemoteAddr())
+		}
 		return
 	}
 
