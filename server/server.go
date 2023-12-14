@@ -303,13 +303,15 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 		if message == nil {
 			continue
 		}
-		// TODO: this can be done in a go routine because once we've got the message from the publisher, the publisher
-		// doesn't need to wait for us to send the message to all peers
 
-		topic := s.getTopic(message.topic)
-		if topic != nil {
-			topic.sendMessageToSubscribers(message.data)
-		}
+		// sending messages to the subscribers can be done async because the publisher doesn't need to wait for
+		// subscribers to be sent the message
+		go func() {
+			topic := s.getTopic(message.topic)
+			if topic != nil {
+				topic.sendMessageToSubscribers(message.data)
+			}
+		}()
 	}
 }
 
