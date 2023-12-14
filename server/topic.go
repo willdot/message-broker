@@ -33,12 +33,25 @@ func (t *topic) sendMessageToSubscribers(msgData []byte) {
 	subscribers := t.subscriptions
 	t.mu.Unlock()
 
-	for addr, subscriber := range subscribers {
-		err := subscriber.peer.RunConnOperation(sendMessageOp(t.name, msgData))
-		if err != nil {
-			slog.Error("failed to send to message", "error", err, "peer", addr)
-			return
-		}
+	var wg sync.WaitGroup
+
+	for _, subscriber := range subscribers {
+		wg.Add(1)
+		sub := subscriber
+		go func() {
+			defer wg.Done()
+			sendMessage(sub, t.name, msgData)
+		}()
+	}
+
+	wg.Wait()
+}
+
+func sendMessage(sub subscriber, topicName string, message []byte) {
+	err := sub.peer.RunConnOperation(sendMessageOp(topicName, message))
+	if err != nil {
+		slog.Error("failed to send to message", "error", err, "peer", sub.peer.Addr())
+		return
 	}
 }
 

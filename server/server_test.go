@@ -283,9 +283,9 @@ func TestPublishMultipleTimes(t *testing.T) {
 	err = binary.Write(publisherConn, binary.BigEndian, Publish)
 	require.NoError(t, err)
 
-	messages := make([][]byte, 0, 10)
+	messages := make([]string, 0, 10)
 	for i := 0; i < 10; i++ {
-		messages = append(messages, []byte(fmt.Sprintf("message %d", i)))
+		messages = append(messages, fmt.Sprintf("message %d", i))
 	}
 
 	subscribeFinCh := make(chan struct{})
@@ -293,7 +293,8 @@ func TestPublishMultipleTimes(t *testing.T) {
 	subscriberConn := createConnectionAndSubscribe(t, []string{topicA, topicB})
 	go func() {
 		// check subscriber got all messages
-		for _, msg := range messages {
+		results := make([]string, 0, len(messages))
+		for i := 0; i < len(messages); i++ {
 			var topicLen uint64
 			err = binary.Read(subscriberConn, binary.BigEndian, &topicLen)
 			require.NoError(t, err)
@@ -312,8 +313,10 @@ func TestPublishMultipleTimes(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, int(dataLen), n)
 
-			assert.Equal(t, msg, buf)
+			results = append(results, string(buf))
 		}
+
+		assert.ElementsMatch(t, results, messages)
 
 		subscribeFinCh <- struct{}{}
 	}()
