@@ -1,0 +1,20 @@
+FROM golang:latest as builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+COPY example/server/ ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 go build -o message-broker-server .
+
+FROM alpine:latest  
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+COPY --from=builder /app/message-broker-server .
+
+CMD ["./message-broker-server"] 

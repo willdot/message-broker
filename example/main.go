@@ -2,22 +2,23 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
+	"time"
 
-	"github.com/willdot/messagebroker"
 	"github.com/willdot/messagebroker/pubsub"
-	"github.com/willdot/messagebroker/server"
 )
 
-func main() {
-	server, err := server.New(context.Background(), ":3000")
-	if err != nil {
-		panic(err)
-	}
-	defer server.Shutdown()
+var consumeOnly *bool
 
-	go sendMessages()
+func main() {
+	consumeOnly = flag.Bool("consume-only", false, "just consumes (doesn't start server and doesn't publish)")
+	flag.Parse()
+
+	if *consumeOnly == false {
+		go sendMessages()
+	}
 
 	sub, err := pubsub.NewSubscriber(":3000")
 	if err != nil {
@@ -49,7 +50,7 @@ func sendMessages() {
 	i := 0
 	for {
 		i++
-		msg := messagebroker.Message{
+		msg := pubsub.Message{
 			Topic: "topic a",
 			Data:  []byte(fmt.Sprintf("message %d", i)),
 		}
@@ -59,5 +60,7 @@ func sendMessages() {
 			slog.Error("failed to publish message", "error", err)
 			continue
 		}
+
+		time.Sleep(time.Millisecond * 500)
 	}
 }

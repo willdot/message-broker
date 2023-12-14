@@ -1,18 +1,24 @@
 package server
 
 import (
-	"encoding/json"
+	"encoding/binary"
+	"fmt"
 	"log/slog"
 	"net"
 	"sync"
 
-	"github.com/willdot/messagebroker"
+	"github.com/willdot/messagebroker/server/peer"
 )
 
 type topic struct {
 	name          string
 	subscriptions map[net.Addr]subscriber
 	mu            sync.Mutex
+}
+
+type subscriber struct {
+	peer          *peer.Peer
+	currentOffset int
 }
 
 func newTopic(name string) topic {
@@ -30,21 +36,43 @@ func (t *topic) removeSubscriber(addr net.Addr) {
 	delete(t.subscriptions, addr)
 }
 
-func (t *topic) sendMessageToSubscribers(msg messagebroker.Message) {
+func (t *topic) sendMessageToSubscribers(msgData []byte) {
 	t.mu.Lock()
 	subscribers := t.subscriptions
 	t.mu.Unlock()
 
-	msgData, err := json.Marshal(msg)
-	if err != nil {
-		slog.Error("failed to marshal message for subscribers", "error", err)
-	}
-
 	for addr, subscriber := range subscribers {
-		err := subscriber.sendMessage(msgData)
+		err := subscriber.peer.RunConnOperation(sendMessageOp(t.name, msgData))
 		if err != nil {
 			slog.Error("failed to send to message", "error", err, "peer", addr)
-			continue
+			return
 		}
+	}
+}
+
+func sendMessageOp(topic string, data []byte) peer.ConnOpp {
+	return func(conn net.Conn) error {
+		topicLen := uint64(len(topic))
+		err := binary.Write(conn, binary.BigEndian, topicLen)
+		if err != nil {
+			return fmt.Errorf("failed to send topic length: %w", err)
+		}
+		_, err = conn.Write([]byte(topic))
+		if err != nil {
+			return fmt.Errorf("failed to send topic: %w", err)
+		}
+
+		dataLen := uint64(len(data))
+
+		err = binary.Write(conn, binary.BigEndian, dataLen)
+		if err != nil {
+			return fmt.Errorf("failed to send data length: %w", err)
+		}
+
+		_, err = conn.Write(data)
+		if err != nil {
+			return fmt.Errorf("failed to write to peer: %w", err)
+		}
+		return nil
 	}
 }
