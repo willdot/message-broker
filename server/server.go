@@ -127,9 +127,11 @@ func (s *Server) handleSubscribe(peer *peer.Peer) {
 	for {
 		action, err := readAction(peer, time.Millisecond*100)
 		if err != nil {
+			// if the error is a timeout, it means the peer hasn't sent an action indicating it wishes to do something so sleep
+			// for a little bit to allow for other actions to happen on the connection
 			var neterr net.Error
 			if errors.As(err, &neterr) && neterr.Timeout() {
-				time.Sleep(time.Second)
+				time.Sleep(time.Millisecond * 500)
 				continue
 			}
 
