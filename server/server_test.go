@@ -25,7 +25,7 @@ func createServer(t *testing.T) *Server {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		srv.Shutdown()
+		_ = srv.Shutdown()
 	})
 
 	return srv
@@ -33,7 +33,7 @@ func createServer(t *testing.T) *Server {
 
 func createServerWithExistingTopic(t *testing.T, topicName string) *Server {
 	srv := createServer(t)
-	srv.topics[topicName] = topic{
+	srv.topics[topicName] = &topic{
 		name:          topicName,
 		subscriptions: make(map[net.Addr]subscriber),
 	}
@@ -61,6 +61,7 @@ func createConnectionAndSubscribe(t *testing.T, topics []string) net.Conn {
 
 	var resp Status
 	err = binary.Read(conn, binary.BigEndian, &resp)
+	require.NoError(t, err)
 
 	assert.Equal(t, expectedRes, int(resp))
 
@@ -106,6 +107,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 
 	var resp Status
 	err = binary.Read(conn, binary.BigEndian, &resp)
+	require.NoError(t, err)
 
 	assert.Equal(t, expectedRes, int(resp))
 
@@ -160,6 +162,7 @@ func TestInvalidAction(t *testing.T) {
 
 	var resp Status
 	err = binary.Read(conn, binary.BigEndian, &resp)
+	require.NoError(t, err)
 
 	assert.Equal(t, expectedRes, int(resp))
 
@@ -167,6 +170,7 @@ func TestInvalidAction(t *testing.T) {
 
 	var dataLen uint32
 	err = binary.Read(conn, binary.BigEndian, &dataLen)
+	require.NoError(t, err)
 	assert.Equal(t, len(expectedMessage), int(dataLen))
 
 	buf := make([]byte, dataLen)
@@ -196,6 +200,7 @@ func TestInvalidTopicDataPublished(t *testing.T) {
 
 	var resp Status
 	err = binary.Read(publisherConn, binary.BigEndian, &resp)
+	require.NoError(t, err)
 
 	assert.Equal(t, expectedRes, int(resp))
 
@@ -203,6 +208,7 @@ func TestInvalidTopicDataPublished(t *testing.T) {
 
 	var dataLen uint32
 	err = binary.Read(publisherConn, binary.BigEndian, &dataLen)
+	require.NoError(t, err)
 	assert.Equal(t, len(expectedMessage), int(dataLen))
 
 	buf := make([]byte, dataLen)

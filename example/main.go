@@ -16,7 +16,7 @@ func main() {
 	consumeOnly = flag.Bool("consume-only", false, "just consumes (doesn't start server and doesn't publish)")
 	flag.Parse()
 
-	if *consumeOnly == false {
+	if !*consumeOnly {
 		go sendMessages()
 	}
 
@@ -24,9 +24,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer sub.Close()
 
-	sub.SubscribeToTopics([]string{"topic a"})
+	defer func() {
+		_ = sub.Close()
+	}()
+
+	err = sub.SubscribeToTopics([]string{"topic a"})
+	if err != nil {
+		panic(err)
+	}
 
 	consumer := sub.Consume(context.Background())
 	if consumer.Err != nil {
@@ -44,7 +50,10 @@ func sendMessages() {
 	if err != nil {
 		panic(err)
 	}
-	defer publisher.Close()
+
+	defer func() {
+		_ = publisher.Close()
+	}()
 
 	// send some messages
 	i := 0

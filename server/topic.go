@@ -21,19 +21,11 @@ type subscriber struct {
 	currentOffset int
 }
 
-func newTopic(name string) topic {
-	return topic{
+func newTopic(name string) *topic {
+	return &topic{
 		name:          name,
 		subscriptions: make(map[net.Addr]subscriber),
 	}
-}
-
-func (t *topic) removeSubscriber(addr net.Addr) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	slog.Info("removing subscriber", "peer", addr)
-	delete(t.subscriptions, addr)
 }
 
 func (t *topic) sendMessageToSubscribers(msgData []byte) {
