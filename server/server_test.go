@@ -18,10 +18,13 @@ const (
 	topicC = "topic c"
 
 	serverAddr = ":6666"
+
+	ackDelay   = time.Millisecond * 100
+	ackTimeout = time.Millisecond * 100
 )
 
 func createServer(t *testing.T) *Server {
-	srv, err := New(serverAddr)
+	srv, err := New(serverAddr, ackDelay, ackTimeout)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -35,7 +38,7 @@ func createServerWithExistingTopic(t *testing.T, topicName string) *Server {
 	srv := createServer(t)
 	srv.topics[topicName] = &topic{
 		name:          topicName,
-		subscriptions: make(map[net.Addr]subscriber),
+		subscriptions: make(map[net.Addr]*subscriber),
 	}
 
 	return srv
@@ -268,9 +271,13 @@ func TestSendsDataToTopicSubscribers(t *testing.T) {
 		buf := make([]byte, dataLen)
 		n, err := conn.Read(buf)
 		require.NoError(t, err)
+
 		require.Equal(t, int(dataLen), n)
 
 		assert.Equal(t, messageData, string(buf))
+
+		err = binary.Write(conn, binary.BigEndian, Ack)
+		require.NoError(t, err)
 	}
 }
 
@@ -314,6 +321,9 @@ func TestPublishMultipleTimes(t *testing.T) {
 			require.Equal(t, int(dataLen), n)
 
 			results = append(results, string(buf))
+
+			err = binary.Write(subscriberConn, binary.BigEndian, Ack)
+			require.NoError(t, err)
 		}
 
 		assert.ElementsMatch(t, results, messages)
@@ -345,4 +355,209 @@ func TestPublishMultipleTimes(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal(fmt.Errorf("timed out waiting for subscriber to read messages"))
 	}
+}
+
+func TestSendsDataToTopicSubscriberNacksThenAcks(t *testing.T) {
+	_ = createServer(t)
+
+	subscriberConn := createConnectionAndSubscribe(t, []string{topicA, topicB})
+
+	publisherConn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
+	require.NoError(t, err)
+
+	err = binary.Write(publisherConn, binary.BigEndian, Publish)
+	require.NoError(t, err)
+
+	topic := fmt.Sprintf("topic:%s", topicA)
+	messageData := "hello world"
+
+	// send topic first
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
+	require.NoError(t, err)
+	_, err = publisherConn.Write([]byte(topic))
+	require.NoError(t, err)
+
+	// now send the data
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(messageData)))
+	require.NoError(t, err)
+	n, err := publisherConn.Write([]byte(messageData))
+	require.NoError(t, err)
+	require.Equal(t, len(messageData), n)
+
+	// check the subsribers got the data
+	readMessage := func(conn net.Conn, ack Action) {
+		var topicLen uint64
+		err = binary.Read(conn, binary.BigEndian, &topicLen)
+		require.NoError(t, err)
+
+		topicBuf := make([]byte, topicLen)
+		_, err = conn.Read(topicBuf)
+		require.NoError(t, err)
+		assert.Equal(t, topicA, string(topicBuf))
+
+		var dataLen uint64
+		err = binary.Read(conn, binary.BigEndian, &dataLen)
+		require.NoError(t, err)
+
+		buf := make([]byte, dataLen)
+		n, err := conn.Read(buf)
+		require.NoError(t, err)
+
+		require.Equal(t, int(dataLen), n)
+
+		assert.Equal(t, messageData, string(buf))
+
+		err = binary.Write(conn, binary.BigEndian, ack)
+		require.NoError(t, err)
+	}
+
+	// NACK the  message and then ack it
+	readMessage(subscriberConn, Nack)
+	readMessage(subscriberConn, Ack)
+	// reading for another message should now timeout but give enough time for the ack delay to kick in
+	// should the second read of the message not have been ack'd properly
+	var topicLen uint64
+	_ = subscriberConn.SetReadDeadline(time.Now().Add(ackDelay + time.Millisecond*100))
+	err = binary.Read(subscriberConn, binary.BigEndian, &topicLen)
+	require.Error(t, err)
+}
+
+func TestSendsDataToTopicSubscriberDoesntAckMessage(t *testing.T) {
+	_ = createServer(t)
+
+	subscriberConn := createConnectionAndSubscribe(t, []string{topicA, topicB})
+
+	publisherConn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
+	require.NoError(t, err)
+
+	err = binary.Write(publisherConn, binary.BigEndian, Publish)
+	require.NoError(t, err)
+
+	topic := fmt.Sprintf("topic:%s", topicA)
+	messageData := "hello world"
+
+	// send topic first
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
+	require.NoError(t, err)
+	_, err = publisherConn.Write([]byte(topic))
+	require.NoError(t, err)
+
+	// now send the data
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(messageData)))
+	require.NoError(t, err)
+	n, err := publisherConn.Write([]byte(messageData))
+	require.NoError(t, err)
+	require.Equal(t, len(messageData), n)
+
+	// check the subsribers got the data
+	readMessage := func(conn net.Conn, ack bool) {
+		var topicLen uint64
+		err = binary.Read(conn, binary.BigEndian, &topicLen)
+		require.NoError(t, err)
+
+		topicBuf := make([]byte, topicLen)
+		_, err = conn.Read(topicBuf)
+		require.NoError(t, err)
+		assert.Equal(t, topicA, string(topicBuf))
+
+		var dataLen uint64
+		err = binary.Read(conn, binary.BigEndian, &dataLen)
+		require.NoError(t, err)
+
+		buf := make([]byte, dataLen)
+		n, err := conn.Read(buf)
+		require.NoError(t, err)
+
+		require.Equal(t, int(dataLen), n)
+
+		assert.Equal(t, messageData, string(buf))
+
+		if ack {
+			err = binary.Write(conn, binary.BigEndian, Ack)
+			require.NoError(t, err)
+			return
+		}
+	}
+
+	// don't send ack or nack and then ack on the second attempt
+	readMessage(subscriberConn, false)
+	readMessage(subscriberConn, true)
+
+	// reading for another message should now timeout but give enough time for the ack delay to kick in
+	// should the second read of the message not have been ack'd properly
+	var topicLen uint64
+	_ = subscriberConn.SetReadDeadline(time.Now().Add(ackDelay + time.Millisecond*100))
+	err = binary.Read(subscriberConn, binary.BigEndian, &topicLen)
+	require.Error(t, err)
+}
+
+func TestSendsDataToTopicSubscriberDeliveryCountTooHighWithNoAck(t *testing.T) {
+	_ = createServer(t)
+
+	subscriberConn := createConnectionAndSubscribe(t, []string{topicA, topicB})
+
+	publisherConn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
+	require.NoError(t, err)
+
+	err = binary.Write(publisherConn, binary.BigEndian, Publish)
+	require.NoError(t, err)
+
+	topic := fmt.Sprintf("topic:%s", topicA)
+	messageData := "hello world"
+
+	// send topic first
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
+	require.NoError(t, err)
+	_, err = publisherConn.Write([]byte(topic))
+	require.NoError(t, err)
+
+	// now send the data
+	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(messageData)))
+	require.NoError(t, err)
+	n, err := publisherConn.Write([]byte(messageData))
+	require.NoError(t, err)
+	require.Equal(t, len(messageData), n)
+
+	// check the subsribers got the data
+	readMessage := func(conn net.Conn, ack bool) {
+		var topicLen uint64
+		err = binary.Read(conn, binary.BigEndian, &topicLen)
+		require.NoError(t, err)
+
+		topicBuf := make([]byte, topicLen)
+		_, err = conn.Read(topicBuf)
+		require.NoError(t, err)
+		assert.Equal(t, topicA, string(topicBuf))
+
+		var dataLen uint64
+		err = binary.Read(conn, binary.BigEndian, &dataLen)
+		require.NoError(t, err)
+
+		buf := make([]byte, dataLen)
+		n, err := conn.Read(buf)
+		require.NoError(t, err)
+
+		require.Equal(t, int(dataLen), n)
+
+		assert.Equal(t, messageData, string(buf))
+
+		if ack {
+			err = binary.Write(conn, binary.BigEndian, Ack)
+			require.NoError(t, err)
+			return
+		}
+	}
+
+	// nack the message 5 times
+	readMessage(subscriberConn, false)
+	readMessage(subscriberConn, false)
+	readMessage(subscriberConn, false)
+	readMessage(subscriberConn, false)
+	readMessage(subscriberConn, false)
+
+	// reading for the message should now timeout as we have nack'd the message too many times
+	var topicLen uint64
+	_ = subscriberConn.SetReadDeadline(time.Now().Add(ackDelay + time.Millisecond*100))
+	err = binary.Read(subscriberConn, binary.BigEndian, &topicLen)
+	require.Error(t, err)
 }

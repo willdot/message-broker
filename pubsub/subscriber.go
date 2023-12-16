@@ -143,14 +143,14 @@ func (s *Subscriber) UnsubscribeToTopics(topicNames []string) error {
 // Consumer allows the consumption of messages. If during the consumer receiving messages from the
 // server an error occurs, it will be stored in Err
 type Consumer struct {
-	msgs chan Message
+	msgs chan *Message
 	// TODO: better error handling? Maybe a channel of errors?
 	Err error
 }
 
 // Messages returns a channel in which this consumer will put messages onto. It is safe to range over the channel since it will be closed once
 // the consumer has finished either due to an error or from being cancelled.
-func (c *Consumer) Messages() <-chan Message {
+func (c *Consumer) Messages() <-chan *Message {
 	return c.msgs
 }
 
@@ -158,7 +158,7 @@ func (c *Consumer) Messages() <-chan Message {
 // to read the messages
 func (s *Subscriber) Consume(ctx context.Context) *Consumer {
 	consumer := &Consumer{
-		msgs: make(chan Message),
+		msgs: make(chan *Message),
 	}
 
 	go s.consume(ctx, consumer)
@@ -173,20 +173,16 @@ func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
 			return
 		}
 
-		msg, err := s.readMessage()
+		err := s.readMessage(consumer.msgs)
 		if err != nil {
 			consumer.Err = err
 			return
 		}
-
-		if msg != nil {
-			consumer.msgs <- *msg
-		}
 	}
 }
 
-func (s *Subscriber) readMessage() (*Message, error) {
-	var msg *Message
+func (s *Subscriber) readMessage(msgChan chan *Message) error {
+	// var msg *Message
 	op := func(conn net.Conn) error {
 		err := s.conn.SetReadDeadline(time.Now().Add(time.Second))
 		if err != nil {
@@ -225,25 +221,35 @@ func (s *Subscriber) readMessage() (*Message, error) {
 			return err
 		}
 
-		msg = &Message{
-			Data:  dataBuf,
-			Topic: string(topicBuf),
+		msg := NewMessage(string(topicBuf), dataBuf)
+
+		msgChan <- msg
+
+		ack := <-msg.ack
+
+		ackMessage := server.Nack
+		if ack {
+			ackMessage = server.Ack
+		}
+
+		err = binary.Write(s.conn, binary.BigEndian, ackMessage)
+		if err != nil {
+			return fmt.Errorf("failed to ack/nack message: %w", err)
 		}
 
 		return nil
-
 	}
 
 	err := s.connOperation(op)
 	if err != nil {
 		var neterr net.Error
 		if errors.As(err, &neterr) && neterr.Timeout() {
-			return nil, nil
+			return nil
 		}
-		return nil, err
+		return err
 	}
 
-	return msg, err
+	return err
 }
 
 func (s *Subscriber) connOperation(op connOpp) error {
