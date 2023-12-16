@@ -364,7 +364,11 @@ func (s *Server) removeSubsciberFromTopic(topicName string, peer *peer.Peer) {
 	if !ok {
 		return
 	}
-
+	sub, ok := t.subscriptions[peer.Addr()]
+	if !ok {
+		return
+	}
+	sub.unsubscribe()
 	delete(t.subscriptions, peer.Addr())
 }
 
@@ -373,6 +377,11 @@ func (s *Server) unsubscribePeerFromAllTopics(peer *peer.Peer) {
 	defer s.mu.Unlock()
 
 	for _, topic := range s.topics {
+		sub, ok := topic.subscriptions[peer.Addr()]
+		if !ok {
+			continue
+		}
+		sub.unsubscribe()
 		delete(topic.subscriptions, peer.Addr())
 	}
 }

@@ -11,9 +11,10 @@ import (
 )
 
 type subscriber struct {
-	peer     *peer.Peer
-	topic    string
-	messages chan message
+	peer          *peer.Peer
+	topic         string
+	messages      chan message
+	unsubscribeCh chan struct{}
 
 	ackDelay   time.Duration
 	ackTimeout time.Duration
@@ -30,11 +31,12 @@ func newMessage(data []byte) message {
 
 func newSubscriber(peer *peer.Peer, topic string, ackDelay, ackTimeout time.Duration) *subscriber {
 	s := &subscriber{
-		peer:       peer,
-		topic:      topic,
-		messages:   make(chan message),
-		ackDelay:   ackDelay,
-		ackTimeout: ackTimeout,
+		peer:          peer,
+		topic:         topic,
+		messages:      make(chan message),
+		ackDelay:      ackDelay,
+		ackTimeout:    ackTimeout,
+		unsubscribeCh: make(chan struct{}),
 	}
 
 	go s.sendMessages()
@@ -43,32 +45,42 @@ func newSubscriber(peer *peer.Peer, topic string, ackDelay, ackTimeout time.Dura
 }
 
 func (s *subscriber) sendMessages() {
-	// TODO: should think about how to break out of this if the subsciber closes its connection etc
-	for msg := range s.messages {
-		ack, err := s.sendMessage(s.topic, msg)
-		if err != nil {
-			slog.Error("failed to send to message", "error", err, "peer", s.peer.Addr())
-		}
+	for {
+		select {
+		case <-s.unsubscribeCh:
+			return
+		case msg := <-s.messages:
+			ack, err := s.sendMessage(s.topic, msg)
+			if err != nil {
+				slog.Error("failed to send to message", "error", err, "peer", s.peer.Addr())
+			}
 
-		if ack {
-			continue
-		}
+			if ack {
+				continue
+			}
 
-		if msg.deliveryCount >= 5 {
-			slog.Error("max delivery count for message. Dropping", "peer", s.peer.Addr())
-			continue
-		}
+			if msg.deliveryCount >= 5 {
+				slog.Error("max delivery count for message. Dropping", "peer", s.peer.Addr())
+				continue
+			}
 
-		msg.deliveryCount++
-		s.addMessage(msg, s.ackDelay)
+			msg.deliveryCount++
+			s.addMessage(msg, s.ackDelay)
+		}
 	}
 }
 
 func (s *subscriber) addMessage(msg message, delay time.Duration) {
 	go func() {
-		time.Sleep(delay)
-		// TODO: should think about how to break out of this if the subsciber closes its connection etc
-		s.messages <- msg
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+
+		select {
+		case <-s.unsubscribeCh:
+			return
+		case <-timer.C:
+			s.messages <- msg
+		}
 	}()
 }
 
@@ -121,4 +133,8 @@ func (s *subscriber) sendMessage(topic string, msg message) (bool, error) {
 	err := s.peer.RunConnOperation(op)
 
 	return ack, err
+}
+
+func (s *subscriber) unsubscribe() {
+	close(s.unsubscribeCh)
 }
