@@ -173,7 +173,7 @@ func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
 			return
 		}
 
-		err := s.readMessage(consumer.msgs)
+		err := s.readMessage(ctx, consumer.msgs)
 		if err != nil {
 			consumer.Err = err
 			return
@@ -181,8 +181,7 @@ func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
 	}
 }
 
-func (s *Subscriber) readMessage(msgChan chan *Message) error {
-	// var msg *Message
+func (s *Subscriber) readMessage(ctx context.Context, msgChan chan *Message) error {
 	op := func(conn net.Conn) error {
 		err := s.conn.SetReadDeadline(time.Now().Add(time.Second))
 		if err != nil {
@@ -225,7 +224,13 @@ func (s *Subscriber) readMessage(msgChan chan *Message) error {
 
 		msgChan <- msg
 
-		ack := <-msg.ack
+		var ack bool
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case ack = <-msg.ack:
+		}
+		//ack := <-msg.ack
 
 		ackMessage := server.Nack
 		if ack {

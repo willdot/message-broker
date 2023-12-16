@@ -134,6 +134,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	err = publisher.PublishMessage(msg)
 	require.NoError(t, err)
 
+	time.Sleep(time.Second)
 	cancel()
 
 	select {
@@ -180,7 +181,7 @@ func TestPublishAndSubscribe(t *testing.T) {
 	}
 
 	// give the consumer some time to read the messages -- TODO: make better!
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Second)
 	cancel()
 
 	select {
@@ -231,7 +232,7 @@ func TestPublishAndSubscribeNackMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	// give the consumer some time to read the messages -- TODO: make better!
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Second)
 	cancel()
 
 	select {
