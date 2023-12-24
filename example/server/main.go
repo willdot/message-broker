@@ -5,12 +5,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/willdot/messagebroker/server"
 )
 
 func main() {
-	srv, err := server.New(":3000")
+	srv, err := server.New(":3000", time.Second, time.Second*2)
 	if err != nil {
 		log.Fatal(err)
 	}

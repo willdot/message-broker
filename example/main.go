@@ -59,10 +59,7 @@ func sendMessages() {
 	i := 0
 	for {
 		i++
-		msg := pubsub.Message{
-			Topic: "topic a",
-			Data:  []byte(fmt.Sprintf("message %d", i)),
-		}
+		msg := pubsub.NewMessage("topic a", []byte(fmt.Sprintf("message %d", i)))
 
 		err = publisher.PublishMessage(msg)
 		if err != nil {

@@ -23,6 +23,8 @@ const (
 	Subscribe   Action = 1
 	Unsubscribe Action = 2
 	Publish     Action = 3
+	Ack         Action = 4
+	Nack        Action = 5
 )
 
 // Status represents the status of a request
@@ -54,18 +56,23 @@ type Server struct {
 
 	mu     sync.Mutex
 	topics map[string]*topic
+
+	ackDelay   time.Duration
+	ackTimeout time.Duration
 }
 
 // New creates and starts a new server
-func New(Addr string) (*Server, error) {
+func New(Addr string, ackDelay, ackTimeout time.Duration) (*Server, error) {
 	lis, err := net.Listen("tcp", Addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
 
 	srv := &Server{
-		lis:    lis,
-		topics: map[string]*topic{},
+		lis:        lis,
+		topics:     map[string]*topic{},
+		ackDelay:   ackDelay,
+		ackTimeout: ackTimeout,
 	}
 
 	go srv.start()
@@ -337,10 +344,7 @@ func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer) {
 		t = newTopic(topicName)
 	}
 
-	t.subscriptions[peer.Addr()] = subscriber{
-		peer:          peer,
-		currentOffset: 0,
-	}
+	t.subscriptions[peer.Addr()] = newSubscriber(peer, topicName, s.ackDelay, s.ackTimeout)
 
 	s.topics[topicName] = t
 }
@@ -360,7 +364,11 @@ func (s *Server) removeSubsciberFromTopic(topicName string, peer *peer.Peer) {
 	if !ok {
 		return
 	}
-
+	sub, ok := t.subscriptions[peer.Addr()]
+	if !ok {
+		return
+	}
+	sub.unsubscribe()
 	delete(t.subscriptions, peer.Addr())
 }
 
@@ -369,6 +377,11 @@ func (s *Server) unsubscribePeerFromAllTopics(peer *peer.Peer) {
 	defer s.mu.Unlock()
 
 	for _, topic := range s.topics {
+		sub, ok := topic.subscriptions[peer.Addr()]
+		if !ok {
+			continue
+		}
+		sub.unsubscribe()
 		delete(topic.subscriptions, peer.Addr())
 	}
 }
@@ -388,10 +401,14 @@ func readAction(peer *peer.Peer, timeout time.Duration) (Action, error) {
 	var action Action
 	op := func(conn net.Conn) error {
 		if timeout > 0 {
-			err := conn.SetReadDeadline(time.Now().Add(timeout))
-			if err != nil {
+			if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 				slog.Error("failed to set connection read deadline", "error", err, "peer", peer.Addr())
 			}
+			defer func() {
+				if err := conn.SetReadDeadline(time.Time{}); err != nil {
+					slog.Error("failed to reset connection read deadline", "error", err, "peer", peer.Addr())
+				}
+			}()
 		}
 
 		err := binary.Read(conn, binary.BigEndian, &action)

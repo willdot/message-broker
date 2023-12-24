@@ -19,7 +19,7 @@ const (
 )
 
 func createServer(t *testing.T) {
-	server, err := server.New(serverAddr)
+	server, err := server.New(serverAddr, time.Millisecond*100, time.Millisecond*100)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -105,14 +105,14 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	consumer := sub.Consume(ctx)
 	require.NoError(t, err)
 
-	var receivedMessages []Message
+	var receivedMessages []*Message
 	consumerFinCh := make(chan struct{})
 	go func() {
 		for msg := range consumer.Messages() {
+			msg.Ack(true)
 			receivedMessages = append(receivedMessages, msg)
 		}
 
-		require.NoError(t, err)
 		consumerFinCh <- struct{}{}
 	}()
 
@@ -125,10 +125,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 		publisher.Close()
 	})
 
-	msg := Message{
-		Topic: topicA,
-		Data:  []byte("hello world"),
-	}
+	msg := NewMessage(topicA, []byte("hello world"))
 
 	err = publisher.PublishMessage(msg)
 	require.NoError(t, err)
@@ -137,6 +134,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	err = publisher.PublishMessage(msg)
 	require.NoError(t, err)
 
+	time.Sleep(time.Second)
 	cancel()
 
 	select {
@@ -151,6 +149,104 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 }
 
 func TestPublishAndSubscribe(t *testing.T) {
+	consumer, cancel := setupConsumer(t)
+
+	var receivedMessages []*Message
+
+	consumerFinCh := make(chan struct{})
+	go func() {
+		for msg := range consumer.Messages() {
+			msg.Ack(true)
+			receivedMessages = append(receivedMessages, msg)
+		}
+
+		consumerFinCh <- struct{}{}
+	}()
+
+	publisher, err := NewPublisher("localhost:9999")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		publisher.Close()
+	})
+
+	// send some messages
+	sentMessages := make([]*Message, 0, 10)
+	for i := 0; i < 10; i++ {
+		msg := NewMessage(topicA, []byte(fmt.Sprintf("message %d", i)))
+
+		sentMessages = append(sentMessages, msg)
+
+		err = publisher.PublishMessage(msg)
+		require.NoError(t, err)
+	}
+
+	// give the consumer some time to read the messages -- TODO: make better!
+	time.Sleep(time.Second)
+	cancel()
+
+	select {
+	case <-consumerFinCh:
+		break
+	case <-time.After(time.Second * 5):
+		t.Fatal("timed out waiting for consumer to read messages")
+	}
+
+	// THIS IS SO HACKY
+	for _, msg := range receivedMessages {
+		msg.ack = nil
+	}
+
+	for _, msg := range sentMessages {
+		msg.ack = nil
+	}
+
+	assert.ElementsMatch(t, receivedMessages, sentMessages)
+}
+
+func TestPublishAndSubscribeNackMessage(t *testing.T) {
+	consumer, cancel := setupConsumer(t)
+
+	var receivedMessages []*Message
+
+	consumerFinCh := make(chan struct{})
+	timesMsgWasReceived := 0
+	go func() {
+		for msg := range consumer.Messages() {
+			msg.Ack(false)
+			timesMsgWasReceived++
+		}
+
+		consumerFinCh <- struct{}{}
+	}()
+
+	publisher, err := NewPublisher("localhost:9999")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		publisher.Close()
+	})
+
+	// send a message
+	msg := NewMessage(topicA, []byte("hello world"))
+
+	err = publisher.PublishMessage(msg)
+	require.NoError(t, err)
+
+	// give the consumer some time to read the messages -- TODO: make better!
+	time.Sleep(time.Second)
+	cancel()
+
+	select {
+	case <-consumerFinCh:
+		break
+	case <-time.After(time.Second * 5):
+		t.Fatal("timed out waiting for consumer to read messages")
+	}
+
+	assert.Empty(t, receivedMessages)
+	assert.Equal(t, 5, timesMsgWasReceived)
+}
+
+func setupConsumer(t *testing.T) (*Consumer, context.CancelFunc) {
 	createServer(t)
 
 	sub, err := NewSubscriber(serverAddr)
@@ -173,48 +269,5 @@ func TestPublishAndSubscribe(t *testing.T) {
 	consumer := sub.Consume(ctx)
 	require.NoError(t, err)
 
-	var receivedMessages []Message
-
-	consumerFinCh := make(chan struct{})
-	go func() {
-		for msg := range consumer.Messages() {
-			receivedMessages = append(receivedMessages, msg)
-		}
-
-		require.NoError(t, err)
-		consumerFinCh <- struct{}{}
-	}()
-
-	publisher, err := NewPublisher("localhost:9999")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		publisher.Close()
-	})
-
-	// send some messages
-	sentMessages := make([]Message, 0, 10)
-	for i := 0; i < 10; i++ {
-		msg := Message{
-			Topic: topicA,
-			Data:  []byte(fmt.Sprintf("message %d", i)),
-		}
-
-		sentMessages = append(sentMessages, msg)
-
-		err = publisher.PublishMessage(msg)
-		require.NoError(t, err)
-	}
-
-	// give the consumer some time to read the messages -- TODO: make better!
-	time.Sleep(time.Millisecond * 500)
-	cancel()
-
-	select {
-	case <-consumerFinCh:
-		break
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for consumer to read messages")
-	}
-
-	assert.ElementsMatch(t, receivedMessages, sentMessages)
+	return consumer, cancel
 }

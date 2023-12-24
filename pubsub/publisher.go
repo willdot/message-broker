@@ -39,7 +39,7 @@ func (p *Publisher) Close() error {
 }
 
 // Publish will publish the given message to the server
-func (p *Publisher) PublishMessage(message Message) error {
+func (p *Publisher) PublishMessage(message *Message) error {
 	op := func(conn net.Conn) error {
 		// send topic first
 		topic := fmt.Sprintf("topic:%s", message.Topic)
