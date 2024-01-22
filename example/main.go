@@ -41,6 +41,7 @@ func main() {
 
 	for msg := range consumer.Messages() {
 		slog.Info("received message", "message", string(msg.Data))
+		msg.Ack(true)
 	}
 
 }

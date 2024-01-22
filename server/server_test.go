@@ -48,17 +48,7 @@ func createConnectionAndSubscribe(t *testing.T, topics []string) net.Conn {
 	conn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
 	require.NoError(t, err)
 
-	err = binary.Write(conn, binary.BigEndian, Subscribe)
-	require.NoError(t, err)
-
-	rawTopics, err := json.Marshal(topics)
-	require.NoError(t, err)
-
-	err = binary.Write(conn, binary.BigEndian, uint32(len(rawTopics)))
-	require.NoError(t, err)
-
-	_, err = conn.Write(rawTopics)
-	require.NoError(t, err)
+	subscribeOrUnsubscribetoTopics(t, conn, topics, Subscribe)
 
 	expectedRes := Subscribed
 
@@ -69,6 +59,37 @@ func createConnectionAndSubscribe(t *testing.T, topics []string) net.Conn {
 	assert.Equal(t, expectedRes, int(resp))
 
 	return conn
+}
+
+func sendMessage(t *testing.T, conn net.Conn, topic string, message []byte) {
+	topicLenB := make([]byte, 4)
+	binary.BigEndian.PutUint32(topicLenB, uint32(len(topic)))
+
+	headers := topicLenB
+	headers = append(headers, []byte(topic)...)
+
+	messageLenB := make([]byte, 4)
+	binary.BigEndian.PutUint32(messageLenB, uint32(len(message)))
+	headers = append(headers, messageLenB...)
+
+	_, err := conn.Write(append(headers, message...))
+	require.NoError(t, err)
+}
+
+func subscribeOrUnsubscribetoTopics(t *testing.T, conn net.Conn, topics []string, action Action) {
+	actionB := make([]byte, 2)
+	binary.BigEndian.PutUint16(actionB, uint16(action))
+	headers := actionB
+
+	b, err := json.Marshal(topics)
+	require.NoError(t, err)
+
+	topicNamesB := make([]byte, 4)
+	binary.BigEndian.PutUint32(topicNamesB, uint32(len(b)))
+	headers = append(headers, topicNamesB...)
+
+	_, err = conn.Write(append(headers, b...))
+	require.NoError(t, err)
 }
 
 func TestSubscribeToTopics(t *testing.T) {
@@ -93,23 +114,14 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	assert.Len(t, srv.topics[topicB].subscriptions, 1)
 	assert.Len(t, srv.topics[topicC].subscriptions, 1)
 
-	err := binary.Write(conn, binary.BigEndian, Unsubscribe)
-	require.NoError(t, err)
-
 	topics := []string{topicA, topicB}
-	rawTopics, err := json.Marshal(topics)
-	require.NoError(t, err)
 
-	err = binary.Write(conn, binary.BigEndian, uint32(len(rawTopics)))
-	require.NoError(t, err)
-
-	_, err = conn.Write(rawTopics)
-	require.NoError(t, err)
+	subscribeOrUnsubscribetoTopics(t, conn, topics, Unsubscribe)
 
 	expectedRes := Unsubscribed
 
 	var resp Status
-	err = binary.Read(conn, binary.BigEndian, &resp)
+	err := binary.Read(conn, binary.BigEndian, &resp)
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedRes, int(resp))
@@ -140,12 +152,8 @@ func TestSubscriberClosesWithoutUnsubscribing(t *testing.T) {
 	require.NoError(t, err)
 
 	data := []byte("hello world")
-	// send data length first
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(data)))
-	require.NoError(t, err)
-	n, err := publisherConn.Write(data)
-	require.NoError(t, err)
-	require.Equal(t, len(data), n)
+
+	sendMessage(t, publisherConn, topicA, data)
 
 	assert.Len(t, srv.topics, 2)
 	assert.Len(t, srv.topics[topicA].subscriptions, 0)
@@ -158,7 +166,7 @@ func TestInvalidAction(t *testing.T) {
 	conn, err := net.Dial("tcp", fmt.Sprintf("localhost%s", serverAddr))
 	require.NoError(t, err)
 
-	err = binary.Write(conn, binary.BigEndian, uint8(99))
+	err = binary.Write(conn, binary.BigEndian, uint16(99))
 	require.NoError(t, err)
 
 	expectedRes := Error
@@ -240,18 +248,7 @@ func TestSendsDataToTopicSubscribers(t *testing.T) {
 	topic := fmt.Sprintf("topic:%s", topicA)
 	messageData := "hello world"
 
-	// send topic first
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
-	require.NoError(t, err)
-	_, err = publisherConn.Write([]byte(topic))
-	require.NoError(t, err)
-
-	// now send the data
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(messageData)))
-	require.NoError(t, err)
-	n, err := publisherConn.Write([]byte(messageData))
-	require.NoError(t, err)
-	require.Equal(t, len(messageData), n)
+	sendMessage(t, publisherConn, topic, []byte(messageData))
 
 	// check the subsribers got the data
 	for _, conn := range subscribers {
@@ -335,18 +332,7 @@ func TestPublishMultipleTimes(t *testing.T) {
 
 	// send multiple messages
 	for _, msg := range messages {
-		// send topic first
-		err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
-		require.NoError(t, err)
-		_, err = publisherConn.Write([]byte(topic))
-		require.NoError(t, err)
-
-		// now send the data
-		err = binary.Write(publisherConn, binary.BigEndian, uint32(len(msg)))
-		require.NoError(t, err)
-		n, err := publisherConn.Write([]byte(msg))
-		require.NoError(t, err)
-		require.Equal(t, len(msg), n)
+		sendMessage(t, publisherConn, topic, []byte(msg))
 	}
 
 	select {
@@ -371,18 +357,7 @@ func TestSendsDataToTopicSubscriberNacksThenAcks(t *testing.T) {
 	topic := fmt.Sprintf("topic:%s", topicA)
 	messageData := "hello world"
 
-	// send topic first
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
-	require.NoError(t, err)
-	_, err = publisherConn.Write([]byte(topic))
-	require.NoError(t, err)
-
-	// now send the data
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(messageData)))
-	require.NoError(t, err)
-	n, err := publisherConn.Write([]byte(messageData))
-	require.NoError(t, err)
-	require.Equal(t, len(messageData), n)
+	sendMessage(t, publisherConn, topic, []byte(messageData))
 
 	// check the subsribers got the data
 	readMessage := func(conn net.Conn, ack Action) {
@@ -436,18 +411,7 @@ func TestSendsDataToTopicSubscriberDoesntAckMessage(t *testing.T) {
 	topic := fmt.Sprintf("topic:%s", topicA)
 	messageData := "hello world"
 
-	// send topic first
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
-	require.NoError(t, err)
-	_, err = publisherConn.Write([]byte(topic))
-	require.NoError(t, err)
-
-	// now send the data
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(messageData)))
-	require.NoError(t, err)
-	n, err := publisherConn.Write([]byte(messageData))
-	require.NoError(t, err)
-	require.Equal(t, len(messageData), n)
+	sendMessage(t, publisherConn, topic, []byte(messageData))
 
 	// check the subsribers got the data
 	readMessage := func(conn net.Conn, ack bool) {
@@ -505,18 +469,7 @@ func TestSendsDataToTopicSubscriberDeliveryCountTooHighWithNoAck(t *testing.T) {
 	topic := fmt.Sprintf("topic:%s", topicA)
 	messageData := "hello world"
 
-	// send topic first
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(topic)))
-	require.NoError(t, err)
-	_, err = publisherConn.Write([]byte(topic))
-	require.NoError(t, err)
-
-	// now send the data
-	err = binary.Write(publisherConn, binary.BigEndian, uint32(len(messageData)))
-	require.NoError(t, err)
-	n, err := publisherConn.Write([]byte(messageData))
-	require.NoError(t, err)
-	require.Equal(t, len(messageData), n)
+	sendMessage(t, publisherConn, topic, []byte(messageData))
 
 	// check the subsribers got the data
 	readMessage := func(conn net.Conn, ack bool) {

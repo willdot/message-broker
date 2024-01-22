@@ -17,7 +17,7 @@ import (
 )
 
 // Action represents the type of action that a peer requests to do
-type Action uint8
+type Action uint16
 
 const (
 	Subscribe   Action = 1
@@ -28,7 +28,7 @@ const (
 )
 
 // Status represents the status of a request
-type Status uint8
+type Status uint16
 
 const (
 	Subscribed   = 1
@@ -445,28 +445,23 @@ func dataLength(conn net.Conn) (uint32, error) {
 }
 
 func writeStatus(status Status, message string, conn net.Conn) {
-	err := binary.Write(conn, binary.BigEndian, status)
+	statusB := make([]byte, 2)
+	binary.BigEndian.PutUint16(statusB, uint16(status))
+
+	headers := statusB
+
+	if len(message) > 0 {
+		sizeB := make([]byte, 4)
+		binary.BigEndian.PutUint32(sizeB, uint32(len(message)))
+		headers = append(headers, sizeB...)
+	}
+
+	msgBytes := []byte(message)
+	_, err := conn.Write(append(headers, msgBytes...))
 	if err != nil {
 		if !errors.Is(err, syscall.EPIPE) {
 			slog.Error("failed to write status to peers connection", "error", err, "peer", conn.RemoteAddr())
 		}
-		return
-	}
-
-	if message == "" {
-		return
-	}
-
-	msgBytes := []byte(message)
-	err = binary.Write(conn, binary.BigEndian, uint32(len(msgBytes)))
-	if err != nil {
-		slog.Error("failed to write message length to peers connection", "error", err, "peer", conn.RemoteAddr())
-		return
-	}
-
-	_, err = conn.Write(msgBytes)
-	if err != nil {
-		slog.Error("failed to write message to peers connection", "error", err, "peer", conn.RemoteAddr())
 		return
 	}
 }

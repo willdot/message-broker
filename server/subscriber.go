@@ -87,24 +87,19 @@ func (s *subscriber) addMessage(msg message, delay time.Duration) {
 func (s *subscriber) sendMessage(topic string, msg message) (bool, error) {
 	var ack bool
 	op := func(conn net.Conn) error {
-		topicLen := uint64(len(topic))
-		err := binary.Write(conn, binary.BigEndian, topicLen)
-		if err != nil {
-			return fmt.Errorf("failed to send topic length: %w", err)
-		}
-		_, err = conn.Write([]byte(topic))
-		if err != nil {
-			return fmt.Errorf("failed to send topic: %w", err)
-		}
+		// TODO: why did I chose uint64 for topic len?
+		topicB := make([]byte, 8)
+		binary.BigEndian.PutUint64(topicB, uint64(len(topic)))
 
-		dataLen := uint64(len(msg.data))
+		headers := topicB
+		headers = append(headers, []byte(topic)...)
 
-		err = binary.Write(conn, binary.BigEndian, dataLen)
-		if err != nil {
-			return fmt.Errorf("failed to send data length: %w", err)
-		}
+		// TODO: if message is empty, return error?
+		dataLenB := make([]byte, 8)
+		binary.BigEndian.PutUint64(dataLenB, uint64(len(msg.data)))
+		headers = append(headers, dataLenB...)
 
-		_, err = conn.Write(msg.data)
+		_, err := conn.Write(append(headers, msg.data...))
 		if err != nil {
 			return fmt.Errorf("failed to write to peer: %w", err)
 		}
