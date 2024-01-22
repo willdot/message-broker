@@ -18,6 +18,6 @@ Once a subscription has declared itself as a publisher, it will enter a loop whe
 
 ### Sending data via a connection
 
-When sending a message representing an action (subscribe, publish etc) then a uint8 binary message is sent. 
+When sending a message representing an action (subscribe, publish etc) then a uint16 binary message is sent. 
 
 When sending any other data, the length of the data is to be sent first using a binary uint32 and then the actual data sent afterwards. 

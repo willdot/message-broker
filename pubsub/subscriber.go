@@ -41,22 +41,20 @@ func (s *Subscriber) Close() error {
 // SubscribeToTopics will subscribe to the provided topics
 func (s *Subscriber) SubscribeToTopics(topicNames []string) error {
 	op := func(conn net.Conn) error {
-		err := binary.Write(conn, binary.BigEndian, server.Subscribe)
-		if err != nil {
-			return fmt.Errorf("failed to subscribe: %w", err)
-		}
+		actionB := make([]byte, 2)
+		binary.BigEndian.PutUint16(actionB, server.Subscribed)
+		headers := actionB
 
 		b, err := json.Marshal(topicNames)
 		if err != nil {
 			return fmt.Errorf("failed to marshal topic names: %w", err)
 		}
 
-		err = binary.Write(conn, binary.BigEndian, uint32(len(b)))
-		if err != nil {
-			return fmt.Errorf("failed to write topic data length: %w", err)
-		}
+		topicNamesB := make([]byte, 4)
+		binary.BigEndian.PutUint32(topicNamesB, uint32(len(b)))
+		headers = append(headers, topicNamesB...)
 
-		_, err = conn.Write(b)
+		_, err = conn.Write(append(headers, b...))
 		if err != nil {
 			return fmt.Errorf("failed to subscribe to topics: %w", err)
 		}
@@ -92,22 +90,20 @@ func (s *Subscriber) SubscribeToTopics(topicNames []string) error {
 // UnsubscribeToTopics will unsubscribe to the provided topics
 func (s *Subscriber) UnsubscribeToTopics(topicNames []string) error {
 	op := func(conn net.Conn) error {
-		err := binary.Write(conn, binary.BigEndian, server.Unsubscribe)
-		if err != nil {
-			return fmt.Errorf("failed to unsubscribe: %w", err)
-		}
+		actionB := make([]byte, 2)
+		binary.BigEndian.PutUint16(actionB, uint16(server.Unsubscribe))
+		headers := actionB
 
 		b, err := json.Marshal(topicNames)
 		if err != nil {
 			return fmt.Errorf("failed to marshal topic names: %w", err)
 		}
 
-		err = binary.Write(conn, binary.BigEndian, uint32(len(b)))
-		if err != nil {
-			return fmt.Errorf("failed to write topic data length: %w", err)
-		}
+		topicNamesB := make([]byte, 4)
+		binary.BigEndian.PutUint32(topicNamesB, uint32(len(b)))
+		headers = append(headers, topicNamesB...)
 
-		_, err = conn.Write(b)
+		_, err = conn.Write(append(headers, b...))
 		if err != nil {
 			return fmt.Errorf("failed to unsubscribe to topics: %w", err)
 		}
@@ -230,8 +226,6 @@ func (s *Subscriber) readMessage(ctx context.Context, msgChan chan *Message) err
 			return ctx.Err()
 		case ack = <-msg.ack:
 		}
-		//ack := <-msg.ack
-
 		ackMessage := server.Nack
 		if ack {
 			ackMessage = server.Ack

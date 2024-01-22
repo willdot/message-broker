@@ -43,22 +43,17 @@ func (p *Publisher) PublishMessage(message *Message) error {
 	op := func(conn net.Conn) error {
 		// send topic first
 		topic := fmt.Sprintf("topic:%s", message.Topic)
-		err := binary.Write(p.conn, binary.BigEndian, uint32(len(topic)))
-		if err != nil {
-			return fmt.Errorf("failed to write topic size to server")
-		}
 
-		_, err = p.conn.Write([]byte(topic))
-		if err != nil {
-			return fmt.Errorf("failed to write topic to server")
-		}
+		topicLenB := make([]byte, 4)
+		binary.BigEndian.PutUint32(topicLenB, uint32(len(topic)))
 
-		err = binary.Write(p.conn, binary.BigEndian, uint32(len(message.Data)))
-		if err != nil {
-			return fmt.Errorf("failed to write message size to server")
-		}
+		headers := append(topicLenB, []byte(topic)...)
 
-		_, err = p.conn.Write(message.Data)
+		messageLenB := make([]byte, 4)
+		binary.BigEndian.PutUint32(messageLenB, uint32(len(message.Data)))
+		headers = append(headers, messageLenB...)
+
+		_, err := conn.Write(append(headers, message.Data...))
 		if err != nil {
 			return fmt.Errorf("failed to publish data to server")
 		}
