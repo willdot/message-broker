@@ -29,17 +29,33 @@ func newMessage(data []byte) message {
 	return message{data: data, deliveryCount: 1}
 }
 
-func newSubscriber(peer *peer.Peer, topic string, ackDelay, ackTimeout time.Duration) *subscriber {
+func newSubscriber(peer *peer.Peer, topic string, ackDelay, ackTimeout time.Duration, messageStore Store, startAt int) *subscriber {
 	s := &subscriber{
 		peer:          peer,
 		topic:         topic,
 		messages:      make(chan message),
 		ackDelay:      ackDelay,
 		ackTimeout:    ackTimeout,
-		unsubscribeCh: make(chan struct{}),
+		unsubscribeCh: make(chan struct{}, 1),
 	}
 
 	go s.sendMessages()
+
+	offset := startAt
+
+	go func() {
+		// here we need to replay all messages from the store for the topic.
+		err := messageStore.ReadFrom(offset, func(msgs []MessageToSend) {
+			// go func() {
+			for _, msg := range msgs {
+				s.messages <- newMessage(msg.data)
+			}
+			// }()
+		})
+		if err != nil {
+			slog.Error("failed to replay messages from offset", "error", err, "offset", offset)
+		}
+	}()
 
 	return s
 }
@@ -79,7 +95,9 @@ func (s *subscriber) addMessage(msg message, delay time.Duration) {
 		case <-s.unsubscribeCh:
 			return
 		case <-timer.C:
+			fmt.Printf("waiting to put message on queue: %s\n", msg.data)
 			s.messages <- msg
+			fmt.Printf("put message on queue: %s\n", msg.data)
 		}
 	}()
 }

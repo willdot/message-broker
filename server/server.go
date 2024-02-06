@@ -27,13 +27,30 @@ const (
 	Nack        Action = 5
 )
 
+func (a Action) String() string {
+	switch a {
+	case Subscribe:
+		return "subscribe"
+	case Unsubscribe:
+		return "unsubscribe"
+	case Publish:
+		return "publish"
+	case Ack:
+		return "ack"
+	case Nack:
+		return "nack"
+	}
+
+	return ""
+}
+
 // Status represents the status of a request
 type Status uint16
 
 const (
-	Subscribed   = 1
-	Unsubscribed = 2
-	Error        = 3
+	Subscribed   Status = 1
+	Unsubscribed Status = 2
+	Error        Status = 3
 )
 
 func (s Status) String() string {
@@ -49,6 +66,20 @@ func (s Status) String() string {
 	return ""
 }
 
+// StartAtType represents where the subcriber wishes to start subscribing to a topic from
+type StartAtType uint16
+
+const (
+	Begining StartAtType = 0
+	Current  StartAtType = 1
+	From     StartAtType = 2
+)
+
+type Store interface {
+	Write(msg MessageToSend) error
+	ReadFrom(offset int, handleFunc func(msgs []MessageToSend)) error
+}
+
 // Server accepts subscribe and publish connections and passes messages around
 type Server struct {
 	Addr string
@@ -59,20 +90,23 @@ type Server struct {
 
 	ackDelay   time.Duration
 	ackTimeout time.Duration
+
+	messageStore Store
 }
 
 // New creates and starts a new server
-func New(Addr string, ackDelay, ackTimeout time.Duration) (*Server, error) {
+func New(Addr string, ackDelay, ackTimeout time.Duration, messageStore Store) (*Server, error) {
 	lis, err := net.Listen("tcp", Addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
 
 	srv := &Server{
-		lis:        lis,
-		topics:     map[string]*topic{},
-		ackDelay:   ackDelay,
-		ackTimeout: ackTimeout,
+		lis:          lis,
+		topics:       map[string]*topic{},
+		ackDelay:     ackDelay,
+		ackTimeout:   ackTimeout,
+		messageStore: messageStore,
 	}
 
 	go srv.start()
@@ -191,6 +225,7 @@ func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
 		}
 
 		var topics []string
+		fmt.Println(string(buf))
 		err = json.Unmarshal(buf, &topics)
 		if err != nil {
 			slog.Error("failed to unmarshal subscibers topic data", "error", err, "peer", peer.Addr())
@@ -198,7 +233,36 @@ func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
 			return nil
 		}
 
-		s.subscribeToTopics(peer, topics)
+		var startAtType StartAtType
+		err = binary.Read(conn, binary.BigEndian, &startAtType)
+		if err != nil {
+			slog.Error(err.Error(), "peer", peer.Addr())
+			writeStatus(Error, "invalid start at type provided", conn)
+			return nil
+		}
+		var startAt int
+		switch startAtType {
+		case From:
+			// read the from
+			var s uint16
+			err = binary.Read(conn, binary.BigEndian, &s)
+			if err != nil {
+				slog.Error(err.Error(), "peer", peer.Addr())
+				writeStatus(Error, "invalid start at value provided", conn)
+				return nil
+			}
+			startAt = int(s)
+		case Begining:
+			startAt = 0
+		case Current:
+			startAt = -1
+		default:
+			slog.Error("invalid start up type provided", "start up type", startAtType)
+			writeStatus(Error, "invalid start up type provided", conn)
+			return nil
+		}
+
+		s.subscribeToTopics(peer, topics, startAt)
 		writeStatus(Subscribed, "", conn)
 
 		return nil
@@ -247,7 +311,7 @@ func (s *Server) handleUnsubscribe(peer *peer.Peer) {
 	_ = peer.RunConnOperation(op)
 }
 
-type messageToSend struct {
+type MessageToSend struct {
 	topic string
 	data  []byte
 }
@@ -255,7 +319,7 @@ type messageToSend struct {
 func (s *Server) handlePublish(peer *peer.Peer) {
 	slog.Info("handling publisher", "peer", peer.Addr())
 	for {
-		var message *messageToSend
+		var message *MessageToSend
 
 		op := func(conn net.Conn) error {
 			dataLen, err := dataLength(conn)
@@ -304,47 +368,48 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 				return nil
 			}
 
-			message = &messageToSend{
+			message = &MessageToSend{
 				topic: topicStr,
 				data:  dataBuf,
 			}
+
+			topic := s.getTopic(message.topic)
+			if topic == nil {
+				topic = newTopic(message.topic, s.messageStore)
+				s.topics[message.topic] = topic
+			}
+
+			err = topic.sendMessageToSubscribers(*message)
+			if err != nil {
+				slog.Error("failed to send message to subscribers", "error", err, "peer", peer.Addr())
+				writeStatus(Error, "failed to send message to subscribers", conn)
+				return nil
+			}
+
 			return nil
 		}
 
 		_ = peer.RunConnOperation(op)
-
-		if message == nil {
-			continue
-		}
-
-		// sending messages to the subscribers can be done async because the publisher doesn't need to wait for
-		// subscribers to be sent the message
-		go func() {
-			topic := s.getTopic(message.topic)
-			if topic != nil {
-				topic.sendMessageToSubscribers(message.data)
-			}
-		}()
 	}
 }
 
-func (s *Server) subscribeToTopics(peer *peer.Peer, topics []string) {
+func (s *Server) subscribeToTopics(peer *peer.Peer, topics []string, startAt int) {
 	slog.Info("subscribing peer to topics", "topics", topics, "peer", peer.Addr())
 	for _, topic := range topics {
-		s.addSubsciberToTopic(topic, peer)
+		s.addSubsciberToTopic(topic, peer, startAt)
 	}
 }
 
-func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer) {
+func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer, startAt int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	t, ok := s.topics[topicName]
 	if !ok {
-		t = newTopic(topicName)
+		t = newTopic(topicName, s.messageStore)
 	}
 
-	t.subscriptions[peer.Addr()] = newSubscriber(peer, topicName, s.ackDelay, s.ackTimeout)
+	t.subscriptions[peer.Addr()] = newSubscriber(peer, topicName, s.ackDelay, s.ackTimeout, s.messageStore, startAt)
 
 	s.topics[topicName] = t
 }

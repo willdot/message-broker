@@ -18,8 +18,19 @@ const (
 	topicB     = "topic b"
 )
 
+type fakeStore struct {
+}
+
+func (f *fakeStore) Write(msg server.MessageToSend) error {
+	return nil
+}
+func (f *fakeStore) ReadFrom(offset int, handleFunc func(msgs []server.MessageToSend)) error {
+	return nil
+}
+
 func createServer(t *testing.T) {
-	server, err := server.New(serverAddr, time.Millisecond*100, time.Millisecond*100)
+	fs := &fakeStore{}
+	server, err := server.New(serverAddr, time.Millisecond*100, time.Millisecond*100, fs)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -75,7 +86,7 @@ func TestSubscribeToTopics(t *testing.T) {
 
 	topics := []string{topicA, topicB}
 
-	err = sub.SubscribeToTopics(topics)
+	err = sub.SubscribeToTopics(topics, server.Current, 0)
 	require.NoError(t, err)
 }
 
@@ -91,7 +102,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 
 	topics := []string{topicA, topicB}
 
-	err = sub.SubscribeToTopics(topics)
+	err = sub.SubscribeToTopics(topics, server.Current, 0)
 	require.NoError(t, err)
 
 	err = sub.UnsubscribeToTopics([]string{topicA})
@@ -258,7 +269,7 @@ func setupConsumer(t *testing.T) (*Consumer, context.CancelFunc) {
 
 	topics := []string{topicA, topicB}
 
-	err = sub.SubscribeToTopics(topics)
+	err = sub.SubscribeToTopics(topics, server.Current, 0)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
