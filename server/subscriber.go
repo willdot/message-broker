@@ -44,13 +44,8 @@ func newSubscriber(peer *peer.Peer, topic string, ackDelay, ackTimeout time.Dura
 	offset := startAt
 
 	go func() {
-		// here we need to replay all messages from the store for the topic.
-		err := messageStore.ReadFrom(offset, func(msgs []MessageToSend) {
-			// go func() {
-			for _, msg := range msgs {
-				s.messages <- newMessage(msg.data)
-			}
-			// }()
+		err := messageStore.ReadFrom(offset, func(msg MessageToSend) {
+			s.messages <- newMessage(msg.data)
 		})
 		if err != nil {
 			slog.Error("failed to replay messages from offset", "error", err, "offset", offset)

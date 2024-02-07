@@ -18,19 +18,8 @@ const (
 	topicB     = "topic b"
 )
 
-type fakeStore struct {
-}
-
-func (f *fakeStore) Write(msg server.MessageToSend) error {
-	return nil
-}
-func (f *fakeStore) ReadFrom(offset int, handleFunc func(msgs []server.MessageToSend)) error {
-	return nil
-}
-
 func createServer(t *testing.T) {
-	fs := &fakeStore{}
-	server, err := server.New(serverAddr, time.Millisecond*100, time.Millisecond*100, fs)
+	server, err := server.New(serverAddr, time.Millisecond*100, time.Millisecond*100)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

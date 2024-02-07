@@ -13,7 +13,8 @@ type topic struct {
 	messageStore  Store
 }
 
-func newTopic(name string, messageStore Store) *topic {
+func newTopic(name string) *topic {
+	messageStore := NewMemoryStore()
 	return &topic{
 		name:          name,
 		subscriptions: make(map[net.Addr]*subscriber),

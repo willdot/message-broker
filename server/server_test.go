@@ -24,8 +24,7 @@ const (
 )
 
 func createServer(t *testing.T) *Server {
-	store := NewMemoryStore()
-	srv, err := New(serverAddr, ackDelay, ackTimeout, store)
+	srv, err := New(serverAddr, ackDelay, ackTimeout)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -40,6 +39,7 @@ func createServerWithExistingTopic(t *testing.T, topicName string) *Server {
 	srv.topics[topicName] = &topic{
 		name:          topicName,
 		subscriptions: make(map[net.Addr]*subscriber),
+		messageStore:  NewMemoryStore(),
 	}
 
 	return srv
@@ -516,13 +516,16 @@ func TestSubscribeAndReplaysFromStart(t *testing.T) {
 		messages = append(messages, fmt.Sprintf("message %d", i))
 	}
 
-	// send messages first
 	topic := fmt.Sprintf("topic:%s", topicA)
 
-	// send multiple messages
 	for _, msg := range messages {
 		sendMessage(t, publisherConn, topic, []byte(msg))
 	}
+
+	// send some messages for topic B as well
+	sendMessage(t, publisherConn, fmt.Sprintf("topic:%s", topicB), []byte("topic b message 1"))
+	sendMessage(t, publisherConn, fmt.Sprintf("topic:%s", topicB), []byte("topic b message 2"))
+	sendMessage(t, publisherConn, fmt.Sprintf("topic:%s", topicB), []byte("topic b message 3"))
 
 	subscriberConn := createConnectionAndSubscribe(t, []string{topicA}, From, 0)
 	results := make([]string, 0, len(messages))
@@ -547,13 +550,17 @@ func TestSubscribeAndReplaysFromIndex(t *testing.T) {
 		messages = append(messages, fmt.Sprintf("message %d", i))
 	}
 
-	// send messages first
 	topic := fmt.Sprintf("topic:%s", topicA)
 
 	// send multiple messages
 	for _, msg := range messages {
 		sendMessage(t, publisherConn, topic, []byte(msg))
 	}
+
+	// send some messages for topic B as well
+	sendMessage(t, publisherConn, fmt.Sprintf("topic:%s", topicB), []byte("topic b message 1"))
+	sendMessage(t, publisherConn, fmt.Sprintf("topic:%s", topicB), []byte("topic b message 2"))
+	sendMessage(t, publisherConn, fmt.Sprintf("topic:%s", topicB), []byte("topic b message 3"))
 
 	subscriberConn := createConnectionAndSubscribe(t, []string{topicA}, From, 3)
 

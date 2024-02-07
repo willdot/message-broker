@@ -77,7 +77,7 @@ const (
 
 type Store interface {
 	Write(msg MessageToSend) error
-	ReadFrom(offset int, handleFunc func(msgs []MessageToSend)) error
+	ReadFrom(offset int, handleFunc func(msg MessageToSend)) error
 }
 
 // Server accepts subscribe and publish connections and passes messages around
@@ -90,23 +90,20 @@ type Server struct {
 
 	ackDelay   time.Duration
 	ackTimeout time.Duration
-
-	messageStore Store
 }
 
 // New creates and starts a new server
-func New(Addr string, ackDelay, ackTimeout time.Duration, messageStore Store) (*Server, error) {
+func New(Addr string, ackDelay, ackTimeout time.Duration) (*Server, error) {
 	lis, err := net.Listen("tcp", Addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
 
 	srv := &Server{
-		lis:          lis,
-		topics:       map[string]*topic{},
-		ackDelay:     ackDelay,
-		ackTimeout:   ackTimeout,
-		messageStore: messageStore,
+		lis:        lis,
+		topics:     map[string]*topic{},
+		ackDelay:   ackDelay,
+		ackTimeout: ackTimeout,
 	}
 
 	go srv.start()
@@ -375,7 +372,7 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 
 			topic := s.getTopic(message.topic)
 			if topic == nil {
-				topic = newTopic(message.topic, s.messageStore)
+				topic = newTopic(message.topic)
 				s.topics[message.topic] = topic
 			}
 
@@ -406,10 +403,10 @@ func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer, startAt 
 
 	t, ok := s.topics[topicName]
 	if !ok {
-		t = newTopic(topicName, s.messageStore)
+		t = newTopic(topicName)
 	}
 
-	t.subscriptions[peer.Addr()] = newSubscriber(peer, topicName, s.ackDelay, s.ackTimeout, s.messageStore, startAt)
+	t.subscriptions[peer.Addr()] = newSubscriber(peer, topicName, s.ackDelay, s.ackTimeout, t.messageStore, startAt)
 
 	s.topics[topicName] = t
 }

@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	srv, err := server.New(":3000", time.Second, time.Second*2, server.NewMemoryStore())
+	srv, err := server.New(":3000", time.Second, time.Second*2)
 	if err != nil {
 		log.Fatal(err)
 	}
