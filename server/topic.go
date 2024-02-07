@@ -7,8 +7,8 @@ import (
 )
 
 type Store interface {
-	Write(msg MessageToSend) error
-	ReadFrom(offset int, handleFunc func(msg MessageToSend)) error
+	Write(msg message) error
+	ReadFrom(offset int, handleFunc func(msg message)) error
 }
 
 type topic struct {
@@ -27,7 +27,7 @@ func newTopic(name string) *topic {
 	}
 }
 
-func (t *topic) sendMessageToSubscribers(msg MessageToSend) error {
+func (t *topic) sendMessageToSubscribers(msg message) error {
 	err := t.messageStore.Write(msg)
 	if err != nil {
 		return fmt.Errorf("failed to write message to store: %w", err)
@@ -38,7 +38,7 @@ func (t *topic) sendMessageToSubscribers(msg MessageToSend) error {
 	t.mu.Unlock()
 
 	for _, subscriber := range subscribers {
-		subscriber.addMessage(newMessage(msg.data), 0)
+		subscriber.addMessage(msg, 0)
 	}
 
 	return nil

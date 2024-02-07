@@ -302,11 +302,6 @@ func (s *Server) handleUnsubscribe(peer *peer.Peer) {
 	_ = peer.RunConnOperation(op)
 }
 
-type MessageToSend struct {
-	topic string
-	data  []byte
-}
-
 func (s *Server) handlePublish(peer *peer.Peer) {
 	slog.Info("handling publisher", "peer", peer.Addr())
 	for {
@@ -357,16 +352,13 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 				return nil
 			}
 
-			message := MessageToSend{
-				topic: topicStr,
-				data:  dataBuf,
+			topic := s.getTopic(topicStr)
+			if topic == nil {
+				topic = newTopic(topicStr)
+				s.topics[topicStr] = topic
 			}
 
-			topic := s.getTopic(message.topic)
-			if topic == nil {
-				topic = newTopic(message.topic)
-				s.topics[message.topic] = topic
-			}
+			message := newMessage(dataBuf)
 
 			err = topic.sendMessageToSubscribers(message)
 			if err != nil {

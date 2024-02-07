@@ -7,17 +7,17 @@ import (
 
 type MemoryStore struct {
 	mu     sync.Mutex
-	msgs   map[int]MessageToSend
+	msgs   map[int]message
 	offset int
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		msgs: make(map[int]MessageToSend),
+		msgs: make(map[int]message),
 	}
 }
 
-func (m *MemoryStore) Write(msg MessageToSend) error {
+func (m *MemoryStore) Write(msg message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -28,7 +28,7 @@ func (m *MemoryStore) Write(msg MessageToSend) error {
 	return nil
 }
 
-func (m *MemoryStore) ReadFrom(offset int, handleFunc func(msg MessageToSend)) error {
+func (m *MemoryStore) ReadFrom(offset int, handleFunc func(msg message)) error {
 	if offset < 0 || offset > m.offset {
 		return fmt.Errorf("invalid offset provided")
 	}

@@ -44,8 +44,8 @@ func newSubscriber(peer *peer.Peer, topic *topic, ackDelay, ackTimeout time.Dura
 	offset := startAt
 
 	go func() {
-		err := topic.messageStore.ReadFrom(offset, func(msg MessageToSend) {
-			s.messages <- newMessage(msg.data)
+		err := topic.messageStore.ReadFrom(offset, func(msg message) {
+			s.messages <- msg
 		})
 		if err != nil {
 			slog.Error("failed to replay messages from offset", "error", err, "offset", offset)
