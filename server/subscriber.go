@@ -44,6 +44,10 @@ func newSubscriber(peer *peer.Peer, topic *topic, ackDelay, ackTimeout time.Dura
 	offset := startAt
 
 	go func() {
+		if startAt < 0 {
+			return
+		}
+
 		err := topic.messageStore.ReadFrom(offset, func(msg message) {
 			s.messages <- msg
 		})
