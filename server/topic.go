@@ -6,6 +6,11 @@ import (
 	"sync"
 )
 
+type Store interface {
+	Write(msg MessageToSend) error
+	ReadFrom(offset int, handleFunc func(msg MessageToSend)) error
+}
+
 type topic struct {
 	name          string
 	subscriptions map[net.Addr]*subscriber

@@ -75,11 +75,6 @@ const (
 	From     StartAtType = 2
 )
 
-type Store interface {
-	Write(msg MessageToSend) error
-	ReadFrom(offset int, handleFunc func(msg MessageToSend)) error
-}
-
 // Server accepts subscribe and publish connections and passes messages around
 type Server struct {
 	Addr string
@@ -222,7 +217,6 @@ func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
 		}
 
 		var topics []string
-		fmt.Println(string(buf))
 		err = json.Unmarshal(buf, &topics)
 		if err != nil {
 			slog.Error("failed to unmarshal subscibers topic data", "error", err, "peer", peer.Addr())
@@ -316,8 +310,6 @@ type MessageToSend struct {
 func (s *Server) handlePublish(peer *peer.Peer) {
 	slog.Info("handling publisher", "peer", peer.Addr())
 	for {
-		var message *MessageToSend
-
 		op := func(conn net.Conn) error {
 			dataLen, err := dataLength(conn)
 			if err != nil {
@@ -365,7 +357,7 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 				return nil
 			}
 
-			message = &MessageToSend{
+			message := MessageToSend{
 				topic: topicStr,
 				data:  dataBuf,
 			}
@@ -376,7 +368,7 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 				s.topics[message.topic] = topic
 			}
 
-			err = topic.sendMessageToSubscribers(*message)
+			err = topic.sendMessageToSubscribers(message)
 			if err != nil {
 				slog.Error("failed to send message to subscribers", "error", err, "peer", peer.Addr())
 				writeStatus(Error, "failed to send message to subscribers", conn)
@@ -406,7 +398,7 @@ func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer, startAt 
 		t = newTopic(topicName)
 	}
 
-	t.subscriptions[peer.Addr()] = newSubscriber(peer, topicName, s.ackDelay, s.ackTimeout, t.messageStore, startAt)
+	t.subscriptions[peer.Addr()] = newSubscriber(peer, t, s.ackDelay, s.ackTimeout, startAt)
 
 	s.topics[topicName] = t
 }

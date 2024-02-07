@@ -33,7 +33,7 @@ func main() {
 	}()
 	startAt := 0
 	startAtType := server.Current
-	if *consumeFrom >= 0-1 {
+	if *consumeFrom > -1 {
 		startAtType = server.From
 		startAt = *consumeFrom
 	}

@@ -29,10 +29,10 @@ func newMessage(data []byte) message {
 	return message{data: data, deliveryCount: 1}
 }
 
-func newSubscriber(peer *peer.Peer, topic string, ackDelay, ackTimeout time.Duration, messageStore Store, startAt int) *subscriber {
+func newSubscriber(peer *peer.Peer, topic *topic, ackDelay, ackTimeout time.Duration, startAt int) *subscriber {
 	s := &subscriber{
 		peer:          peer,
-		topic:         topic,
+		topic:         topic.name,
 		messages:      make(chan message),
 		ackDelay:      ackDelay,
 		ackTimeout:    ackTimeout,
@@ -44,7 +44,7 @@ func newSubscriber(peer *peer.Peer, topic string, ackDelay, ackTimeout time.Dura
 	offset := startAt
 
 	go func() {
-		err := messageStore.ReadFrom(offset, func(msg MessageToSend) {
+		err := topic.messageStore.ReadFrom(offset, func(msg MessageToSend) {
 			s.messages <- newMessage(msg.data)
 		})
 		if err != nil {
