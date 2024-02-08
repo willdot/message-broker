@@ -41,19 +41,15 @@ func newSubscriber(peer *peer.Peer, topic *topic, ackDelay, ackTimeout time.Dura
 
 	go s.sendMessages()
 
-	offset := startAt
-
 	go func() {
-		if startAt < 0 {
-			return
-		}
-
-		err := topic.messageStore.ReadFrom(offset, func(msg message) {
-			s.messages <- msg
+		topic.messageStore.ReadFrom(startAt, func(msg message) {
+			select {
+			case s.messages <- msg:
+				return
+			case <-s.unsubscribeCh:
+				return
+			}
 		})
-		if err != nil {
-			slog.Error("failed to replay messages from offset", "error", err, "offset", offset)
-		}
 	}()
 
 	return s
@@ -94,9 +90,7 @@ func (s *subscriber) addMessage(msg message, delay time.Duration) {
 		case <-s.unsubscribeCh:
 			return
 		case <-timer.C:
-			fmt.Printf("waiting to put message on queue: %s\n", msg.data)
 			s.messages <- msg
-			fmt.Printf("put message on queue: %s\n", msg.data)
 		}
 	}()
 }

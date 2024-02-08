@@ -27,23 +27,6 @@ const (
 	Nack        Action = 5
 )
 
-func (a Action) String() string {
-	switch a {
-	case Subscribe:
-		return "subscribe"
-	case Unsubscribe:
-		return "unsubscribe"
-	case Publish:
-		return "publish"
-	case Ack:
-		return "ack"
-	case Nack:
-		return "nack"
-	}
-
-	return ""
-}
-
 // Status represents the status of a request
 type Status uint16
 
@@ -70,9 +53,9 @@ func (s Status) String() string {
 type StartAtType uint16
 
 const (
-	Begining StartAtType = 0
-	Current  StartAtType = 1
-	From     StartAtType = 2
+	Beginning StartAtType = 0
+	Current   StartAtType = 1
+	From      StartAtType = 2
 )
 
 // Server accepts subscribe and publish connections and passes messages around
@@ -234,7 +217,6 @@ func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
 		var startAt int
 		switch startAtType {
 		case From:
-			// read the from
 			var s uint16
 			err = binary.Read(conn, binary.BigEndian, &s)
 			if err != nil {
@@ -243,7 +225,7 @@ func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
 				return nil
 			}
 			startAt = int(s)
-		case Begining:
+		case Beginning:
 			startAt = 0
 		case Current:
 			startAt = -1

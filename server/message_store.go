@@ -1,15 +1,14 @@
 package server
 
 import (
-	"fmt"
 	"sync"
 )
 
 // Memory store allows messages to be stored in memory
 type MemoryStore struct {
-	mu     sync.Mutex
-	msgs   map[int]message
-	offset int
+	mu         sync.Mutex
+	msgs       map[int]message
+	nextOffset int
 }
 
 // New memory store initializes a new in memory store
@@ -24,17 +23,17 @@ func (m *MemoryStore) Write(msg message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.msgs[m.offset] = msg
+	m.msgs[m.nextOffset] = msg
 
-	m.offset++
+	m.nextOffset++
 
 	return nil
 }
 
 // ReadFrom will read messages from (and including) the provided offset and pass them to the provided handler
-func (m *MemoryStore) ReadFrom(offset int, handleFunc func(msg message)) error {
-	if offset < 0 || offset > m.offset {
-		return fmt.Errorf("invalid offset provided")
+func (m *MemoryStore) ReadFrom(offset int, handleFunc func(msg message)) {
+	if offset < 0 || offset >= m.nextOffset {
+		return
 	}
 
 	m.mu.Lock()
@@ -43,6 +42,4 @@ func (m *MemoryStore) ReadFrom(offset int, handleFunc func(msg message)) error {
 	for i := offset; i < len(m.msgs); i++ {
 		handleFunc(m.msgs[i])
 	}
-
-	return nil
 }

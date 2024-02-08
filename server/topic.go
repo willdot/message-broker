@@ -8,7 +8,7 @@ import (
 
 type Store interface {
 	Write(msg message) error
-	ReadFrom(offset int, handleFunc func(msg message)) error
+	ReadFrom(offset int, handleFunc func(msg message))
 }
 
 type topic struct {
