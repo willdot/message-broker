@@ -1,4 +1,4 @@
-package pubsub
+package client
 
 import (
 	"encoding/binary"
@@ -6,7 +6,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/willdot/messagebroker/server"
+	"github.com/willdot/messagebroker/internal/server"
 )
 
 // Publisher allows messages to be published to a server
@@ -44,8 +44,8 @@ func (p *Publisher) PublishMessage(message *Message) error {
 		// send topic first
 		topic := fmt.Sprintf("topic:%s", message.Topic)
 
-		topicLenB := make([]byte, 4)
-		binary.BigEndian.PutUint32(topicLenB, uint32(len(topic)))
+		topicLenB := make([]byte, 2)
+		binary.BigEndian.PutUint16(topicLenB, uint16(len(topic)))
 
 		headers := append(topicLenB, []byte(topic)...)
 

@@ -1,4 +1,4 @@
-package pubsub
+package client
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/willdot/messagebroker/server"
+	"github.com/willdot/messagebroker/internal/server"
 )
 
 type connOpp func(conn net.Conn) error
@@ -96,7 +96,7 @@ func subscribeToTopics(conn net.Conn, topicNames []string, startAtType server.St
 		return nil
 	}
 
-	var dataLen uint32
+	var dataLen uint16
 	err = binary.Read(conn, binary.BigEndian, &dataLen)
 	if err != nil {
 		return fmt.Errorf("received status %s:", resp)
@@ -140,7 +140,7 @@ func unsubscribeToTopics(conn net.Conn, topicNames []string) error {
 		return nil
 	}
 
-	var dataLen uint32
+	var dataLen uint16
 	err = binary.Read(conn, binary.BigEndian, &dataLen)
 	if err != nil {
 		return fmt.Errorf("received status %s:", resp)
@@ -198,12 +198,12 @@ func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
 
 func (s *Subscriber) readMessage(ctx context.Context, msgChan chan *Message) error {
 	op := func(conn net.Conn) error {
-		err := s.conn.SetReadDeadline(time.Now().Add(time.Second))
+		err := s.conn.SetReadDeadline(time.Now().Add(time.Millisecond * 300))
 		if err != nil {
 			return err
 		}
 
-		var topicLen uint64
+		var topicLen uint16
 		err = binary.Read(s.conn, binary.BigEndian, &topicLen)
 		if err != nil {
 			// TODO: check if this is needed elsewhere. I'm not sure where the read deadline resets....

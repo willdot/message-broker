@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/willdot/messagebroker/internal"
+	"github.com/willdot/messagebroker/internal/messagestore"
 )
 
 type Store interface {
-	Write(msg message) error
-	ReadFrom(offset int, handleFunc func(msg message))
+	Write(msg internal.Message) error
+	ReadFrom(offset int, handleFunc func(msg internal.Message))
 }
 
 type topic struct {
@@ -19,7 +22,7 @@ type topic struct {
 }
 
 func newTopic(name string) *topic {
-	messageStore := NewMemoryStore()
+	messageStore := messagestore.NewMemoryStore()
 	return &topic{
 		name:          name,
 		subscriptions: make(map[net.Addr]*subscriber),
@@ -27,7 +30,7 @@ func newTopic(name string) *topic {
 	}
 }
 
-func (t *topic) sendMessageToSubscribers(msg message) error {
+func (t *topic) sendMessageToSubscribers(msg internal.Message) error {
 	err := t.messageStore.Write(msg)
 	if err != nil {
 		return fmt.Errorf("failed to write message to store: %w", err)

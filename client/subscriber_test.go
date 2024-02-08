@@ -1,4 +1,4 @@
-package pubsub
+package client
 
 import (
 	"context"
@@ -8,8 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/willdot/messagebroker/server"
+	"github.com/willdot/messagebroker/internal/server"
 )
 
 const (
@@ -134,7 +133,8 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	err = publisher.PublishMessage(msg)
 	require.NoError(t, err)
 
-	time.Sleep(time.Second)
+	// give the consumer some time to read the messages -- TODO: make better!
+	time.Sleep(time.Millisecond * 300)
 	cancel()
 
 	select {
@@ -181,7 +181,7 @@ func TestPublishAndSubscribe(t *testing.T) {
 	}
 
 	// give the consumer some time to read the messages -- TODO: make better!
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 300)
 	cancel()
 
 	select {

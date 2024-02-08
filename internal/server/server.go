@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/willdot/messagebroker/server/peer"
+	"github.com/willdot/messagebroker/internal"
 )
 
 // Action represents the type of action that a peer requests to do
@@ -111,7 +111,7 @@ func (s *Server) start() {
 }
 
 func (s *Server) handleConn(conn net.Conn) {
-	peer := peer.New(conn)
+	peer := NewPeer(conn)
 
 	slog.Info("handling connection", "peer", peer.Addr())
 	defer slog.Info("ending connection", "peer", peer.Addr())
@@ -137,11 +137,15 @@ func (s *Server) handleConn(conn net.Conn) {
 	}
 }
 
-func (s *Server) handleSubscribe(peer *peer.Peer) {
+func (s *Server) handleSubscribe(peer *Peer) {
 	slog.Info("handling subscriber", "peer", peer.Addr())
 	// subscribe the peer to the topic
 	s.subscribePeerToTopic(peer)
 
+	s.waitForPeerAction(peer)
+}
+
+func (s *Server) waitForPeerAction(peer *Peer) {
 	// keep handling the peers connection, getting the action from the peer when it wishes to do something else.
 	// once the peers connection ends, it will be unsubscribed from all topics and returned
 	for {
@@ -177,10 +181,10 @@ func (s *Server) handleSubscribe(peer *peer.Peer) {
 	}
 }
 
-func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
+func (s *Server) subscribePeerToTopic(peer *Peer) {
 	op := func(conn net.Conn) error {
 		// get the topics the peer wishes to subscribe to
-		dataLen, err := dataLength(conn)
+		dataLen, err := dataLengthUint32(conn)
 		if err != nil {
 			slog.Error(err.Error(), "peer", peer.Addr())
 			writeStatus(Error, "invalid data length of topics provided", conn)
@@ -244,11 +248,11 @@ func (s *Server) subscribePeerToTopic(peer *peer.Peer) {
 	_ = peer.RunConnOperation(op)
 }
 
-func (s *Server) handleUnsubscribe(peer *peer.Peer) {
+func (s *Server) handleUnsubscribe(peer *Peer) {
 	slog.Info("handling unsubscriber", "peer", peer.Addr())
 	op := func(conn net.Conn) error {
 		// get the topics the peer wishes to unsubscribe from
-		dataLen, err := dataLength(conn)
+		dataLen, err := dataLengthUint32(conn)
 		if err != nil {
 			slog.Error(err.Error(), "peer", peer.Addr())
 			writeStatus(Error, "invalid data length of topics provided", conn)
@@ -284,11 +288,11 @@ func (s *Server) handleUnsubscribe(peer *peer.Peer) {
 	_ = peer.RunConnOperation(op)
 }
 
-func (s *Server) handlePublish(peer *peer.Peer) {
+func (s *Server) handlePublish(peer *Peer) {
 	slog.Info("handling publisher", "peer", peer.Addr())
 	for {
 		op := func(conn net.Conn) error {
-			dataLen, err := dataLength(conn)
+			topicDataLen, err := dataLengthUint16(conn)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					return nil
@@ -297,10 +301,10 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 				writeStatus(Error, "invalid data length of data provided", conn)
 				return nil
 			}
-			if dataLen == 0 {
+			if topicDataLen == 0 {
 				return nil
 			}
-			topicBuf := make([]byte, dataLen)
+			topicBuf := make([]byte, topicDataLen)
 			_, err = conn.Read(topicBuf)
 			if err != nil {
 				slog.Error("failed to read topic from peer", "error", err, "peer", peer.Addr())
@@ -316,17 +320,17 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 			}
 			topicStr = strings.TrimPrefix(topicStr, "topic:")
 
-			dataLen, err = dataLength(conn)
+			msgDataLen, err := dataLengthUint32(conn)
 			if err != nil {
 				slog.Error(err.Error(), "peer", peer.Addr())
 				writeStatus(Error, "invalid data length of data provided", conn)
 				return nil
 			}
-			if dataLen == 0 {
+			if msgDataLen == 0 {
 				return nil
 			}
 
-			dataBuf := make([]byte, dataLen)
+			dataBuf := make([]byte, msgDataLen)
 			_, err = conn.Read(dataBuf)
 			if err != nil {
 				slog.Error("failed to read data from peer", "error", err, "peer", peer.Addr())
@@ -340,7 +344,7 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 				s.topics[topicStr] = topic
 			}
 
-			message := newMessage(dataBuf)
+			message := internal.NewMessage(dataBuf)
 
 			err = topic.sendMessageToSubscribers(message)
 			if err != nil {
@@ -356,14 +360,14 @@ func (s *Server) handlePublish(peer *peer.Peer) {
 	}
 }
 
-func (s *Server) subscribeToTopics(peer *peer.Peer, topics []string, startAt int) {
+func (s *Server) subscribeToTopics(peer *Peer, topics []string, startAt int) {
 	slog.Info("subscribing peer to topics", "topics", topics, "peer", peer.Addr())
 	for _, topic := range topics {
 		s.addSubsciberToTopic(topic, peer, startAt)
 	}
 }
 
-func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer, startAt int) {
+func (s *Server) addSubsciberToTopic(topicName string, peer *Peer, startAt int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -377,14 +381,14 @@ func (s *Server) addSubsciberToTopic(topicName string, peer *peer.Peer, startAt 
 	s.topics[topicName] = t
 }
 
-func (s *Server) unsubscribeToTopics(peer *peer.Peer, topics []string) {
+func (s *Server) unsubscribeToTopics(peer *Peer, topics []string) {
 	slog.Info("unsubscribing peer from topics", "topics", topics, "peer", peer.Addr())
 	for _, topic := range topics {
 		s.removeSubsciberFromTopic(topic, peer)
 	}
 }
 
-func (s *Server) removeSubsciberFromTopic(topicName string, peer *peer.Peer) {
+func (s *Server) removeSubsciberFromTopic(topicName string, peer *Peer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -400,7 +404,7 @@ func (s *Server) removeSubsciberFromTopic(topicName string, peer *peer.Peer) {
 	delete(t.subscriptions, peer.Addr())
 }
 
-func (s *Server) unsubscribePeerFromAllTopics(peer *peer.Peer) {
+func (s *Server) unsubscribePeerFromAllTopics(peer *Peer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -425,7 +429,7 @@ func (s *Server) getTopic(topicName string) *topic {
 	return nil
 }
 
-func readAction(peer *peer.Peer, timeout time.Duration) (Action, error) {
+func readAction(peer *Peer, timeout time.Duration) (Action, error) {
 	var action Action
 	op := func(conn net.Conn) error {
 		if timeout > 0 {
@@ -454,7 +458,7 @@ func readAction(peer *peer.Peer, timeout time.Duration) (Action, error) {
 	return action, nil
 }
 
-func writeInvalidAction(peer *peer.Peer) {
+func writeInvalidAction(peer *Peer) {
 	op := func(conn net.Conn) error {
 		writeStatus(Error, "unknown action", conn)
 		return nil
@@ -463,8 +467,17 @@ func writeInvalidAction(peer *peer.Peer) {
 	_ = peer.RunConnOperation(op)
 }
 
-func dataLength(conn net.Conn) (uint32, error) {
+func dataLengthUint32(conn net.Conn) (uint32, error) {
 	var dataLen uint32
+	err := binary.Read(conn, binary.BigEndian, &dataLen)
+	if err != nil {
+		return 0, err
+	}
+	return dataLen, nil
+}
+
+func dataLengthUint16(conn net.Conn) (uint16, error) {
+	var dataLen uint16
 	err := binary.Read(conn, binary.BigEndian, &dataLen)
 	if err != nil {
 		return 0, err
@@ -479,8 +492,8 @@ func writeStatus(status Status, message string, conn net.Conn) {
 	headers := statusB
 
 	if len(message) > 0 {
-		sizeB := make([]byte, 4)
-		binary.BigEndian.PutUint32(sizeB, uint32(len(message)))
+		sizeB := make([]byte, 2)
+		binary.BigEndian.PutUint16(sizeB, uint16(len(message)))
 		headers = append(headers, sizeB...)
 	}
 

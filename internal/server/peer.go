@@ -1,4 +1,4 @@
-package peer
+package server
 
 import (
 	"net"
@@ -12,7 +12,7 @@ type Peer struct {
 }
 
 // New returns a new peer.
-func New(conn net.Conn) *Peer {
+func NewPeer(conn net.Conn) *Peer {
 	return &Peer{
 		conn: conn,
 	}

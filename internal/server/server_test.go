@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/willdot/messagebroker/internal/messagestore"
 )
 
 const (
@@ -39,7 +40,7 @@ func createServerWithExistingTopic(t *testing.T, topicName string) *Server {
 	srv.topics[topicName] = &topic{
 		name:          topicName,
 		subscriptions: make(map[net.Addr]*subscriber),
-		messageStore:  NewMemoryStore(),
+		messageStore:  messagestore.NewMemoryStore(),
 	}
 
 	return srv
@@ -211,7 +212,7 @@ func TestInvalidAction(t *testing.T) {
 
 	expectedMessage := "unknown action"
 
-	var dataLen uint32
+	var dataLen uint16
 	err = binary.Read(conn, binary.BigEndian, &dataLen)
 	require.NoError(t, err)
 	assert.Equal(t, len(expectedMessage), int(dataLen))
@@ -249,7 +250,7 @@ func TestInvalidTopicDataPublished(t *testing.T) {
 
 	expectedMessage := "topic data does not contain 'topic:' prefix"
 
-	var dataLen uint32
+	var dataLen uint16
 	err = binary.Read(publisherConn, binary.BigEndian, &dataLen)
 	require.NoError(t, err)
 	assert.Equal(t, len(expectedMessage), int(dataLen))
@@ -352,7 +353,7 @@ func TestSendsDataToTopicSubscriberNacksThenAcks(t *testing.T) {
 
 	// check the subsribers got the data
 	readMessage := func(conn net.Conn, ack Action) {
-		var topicLen uint64
+		var topicLen uint16
 		err = binary.Read(conn, binary.BigEndian, &topicLen)
 		require.NoError(t, err)
 
@@ -382,7 +383,7 @@ func TestSendsDataToTopicSubscriberNacksThenAcks(t *testing.T) {
 	readMessage(subscriberConn, Ack)
 	// reading for another message should now timeout but give enough time for the ack delay to kick in
 	// should the second read of the message not have been ack'd properly
-	var topicLen uint64
+	var topicLen uint16
 	_ = subscriberConn.SetReadDeadline(time.Now().Add(ackDelay + time.Millisecond*100))
 	err = binary.Read(subscriberConn, binary.BigEndian, &topicLen)
 	require.Error(t, err)
@@ -406,7 +407,7 @@ func TestSendsDataToTopicSubscriberDoesntAckMessage(t *testing.T) {
 
 	// check the subsribers got the data
 	readMessage := func(conn net.Conn, ack bool) {
-		var topicLen uint64
+		var topicLen uint16
 		err = binary.Read(conn, binary.BigEndian, &topicLen)
 		require.NoError(t, err)
 
@@ -440,7 +441,7 @@ func TestSendsDataToTopicSubscriberDoesntAckMessage(t *testing.T) {
 
 	// reading for another message should now timeout but give enough time for the ack delay to kick in
 	// should the second read of the message not have been ack'd properly
-	var topicLen uint64
+	var topicLen uint16
 	_ = subscriberConn.SetReadDeadline(time.Now().Add(ackDelay + time.Millisecond*100))
 	err = binary.Read(subscriberConn, binary.BigEndian, &topicLen)
 	require.Error(t, err)
@@ -464,7 +465,7 @@ func TestSendsDataToTopicSubscriberDeliveryCountTooHighWithNoAck(t *testing.T) {
 
 	// check the subsribers got the data
 	readMessage := func(conn net.Conn, ack bool) {
-		var topicLen uint64
+		var topicLen uint16
 		err = binary.Read(conn, binary.BigEndian, &topicLen)
 		require.NoError(t, err)
 
@@ -500,7 +501,7 @@ func TestSendsDataToTopicSubscriberDeliveryCountTooHighWithNoAck(t *testing.T) {
 	readMessage(subscriberConn, false)
 
 	// reading for the message should now timeout as we have nack'd the message too many times
-	var topicLen uint64
+	var topicLen uint16
 	_ = subscriberConn.SetReadDeadline(time.Now().Add(ackDelay + time.Millisecond*100))
 	err = binary.Read(subscriberConn, binary.BigEndian, &topicLen)
 	require.Error(t, err)
@@ -592,7 +593,7 @@ func TestSubscribeAndReplaysFromIndex(t *testing.T) {
 }
 
 func readMessage(t *testing.T, subscriberConn net.Conn) []byte {
-	var topicLen uint64
+	var topicLen uint16
 	err := binary.Read(subscriberConn, binary.BigEndian, &topicLen)
 	require.NoError(t, err)
 
