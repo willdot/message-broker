@@ -98,9 +98,8 @@ func (s *subscriber) addMessage(msg message, delay time.Duration) {
 func (s *subscriber) sendMessage(topic string, msg message) (bool, error) {
 	var ack bool
 	op := func(conn net.Conn) error {
-		// TODO: why did I chose uint64 for topic len?
-		topicB := make([]byte, 8)
-		binary.BigEndian.PutUint64(topicB, uint64(len(topic)))
+		topicB := make([]byte, 2)
+		binary.BigEndian.PutUint16(topicB, uint16(len(topic)))
 
 		headers := topicB
 		headers = append(headers, []byte(topic)...)
