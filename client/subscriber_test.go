@@ -134,7 +134,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	require.NoError(t, err)
 
 	// give the consumer some time to read the messages -- TODO: make better!
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 300)
 	cancel()
 
 	select {
