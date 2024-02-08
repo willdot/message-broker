@@ -39,49 +39,9 @@ func (s *Subscriber) Close() error {
 }
 
 // SubscribeToTopics will subscribe to the provided topics
-func (s *Subscriber) SubscribeToTopics(topicNames []string) error {
+func (s *Subscriber) SubscribeToTopics(topicNames []string, startAtType server.StartAtType, startAtIndex int) error {
 	op := func(conn net.Conn) error {
-		actionB := make([]byte, 2)
-		binary.BigEndian.PutUint16(actionB, server.Subscribed)
-		headers := actionB
-
-		b, err := json.Marshal(topicNames)
-		if err != nil {
-			return fmt.Errorf("failed to marshal topic names: %w", err)
-		}
-
-		topicNamesB := make([]byte, 4)
-		binary.BigEndian.PutUint32(topicNamesB, uint32(len(b)))
-		headers = append(headers, topicNamesB...)
-
-		_, err = conn.Write(append(headers, b...))
-		if err != nil {
-			return fmt.Errorf("failed to subscribe to topics: %w", err)
-		}
-
-		var resp server.Status
-		err = binary.Read(conn, binary.BigEndian, &resp)
-		if err != nil {
-			return fmt.Errorf("failed to read confirmation of subscription: %w", err)
-		}
-
-		if resp == server.Subscribed {
-			return nil
-		}
-
-		var dataLen uint32
-		err = binary.Read(conn, binary.BigEndian, &dataLen)
-		if err != nil {
-			return fmt.Errorf("received status %s:", resp)
-		}
-
-		buf := make([]byte, dataLen)
-		_, err = conn.Read(buf)
-		if err != nil {
-			return fmt.Errorf("received status %s:", resp)
-		}
-
-		return fmt.Errorf("received status %s - %s", resp, buf)
+		return subscribeToTopics(conn, topicNames, startAtType, startAtIndex)
 	}
 
 	return s.connOperation(op)
@@ -90,50 +50,109 @@ func (s *Subscriber) SubscribeToTopics(topicNames []string) error {
 // UnsubscribeToTopics will unsubscribe to the provided topics
 func (s *Subscriber) UnsubscribeToTopics(topicNames []string) error {
 	op := func(conn net.Conn) error {
-		actionB := make([]byte, 2)
-		binary.BigEndian.PutUint16(actionB, uint16(server.Unsubscribe))
-		headers := actionB
-
-		b, err := json.Marshal(topicNames)
-		if err != nil {
-			return fmt.Errorf("failed to marshal topic names: %w", err)
-		}
-
-		topicNamesB := make([]byte, 4)
-		binary.BigEndian.PutUint32(topicNamesB, uint32(len(b)))
-		headers = append(headers, topicNamesB...)
-
-		_, err = conn.Write(append(headers, b...))
-		if err != nil {
-			return fmt.Errorf("failed to unsubscribe to topics: %w", err)
-		}
-
-		var resp server.Status
-		err = binary.Read(conn, binary.BigEndian, &resp)
-		if err != nil {
-			return fmt.Errorf("failed to read confirmation of unsubscription: %w", err)
-		}
-
-		if resp == server.Unsubscribed {
-			return nil
-		}
-
-		var dataLen uint32
-		err = binary.Read(conn, binary.BigEndian, &dataLen)
-		if err != nil {
-			return fmt.Errorf("received status %s:", resp)
-		}
-
-		buf := make([]byte, dataLen)
-		_, err = conn.Read(buf)
-		if err != nil {
-			return fmt.Errorf("received status %s:", resp)
-		}
-
-		return fmt.Errorf("received status %s - %s", resp, buf)
+		return unsubscribeToTopics(conn, topicNames)
 	}
 
 	return s.connOperation(op)
+}
+
+func subscribeToTopics(conn net.Conn, topicNames []string, startAtType server.StartAtType, startAtIndex int) error {
+	actionB := make([]byte, 2)
+	binary.BigEndian.PutUint16(actionB, uint16(server.Subscribe))
+	headers := actionB
+
+	b, err := json.Marshal(topicNames)
+	if err != nil {
+		return fmt.Errorf("failed to marshal topic names: %w", err)
+	}
+
+	topicNamesB := make([]byte, 4)
+	binary.BigEndian.PutUint32(topicNamesB, uint32(len(b)))
+	headers = append(headers, topicNamesB...)
+	headers = append(headers, b...)
+
+	startAtTypeB := make([]byte, 2)
+	binary.BigEndian.PutUint16(startAtTypeB, uint16(startAtType))
+	headers = append(headers, startAtTypeB...)
+
+	if startAtType == server.From {
+		fromB := make([]byte, 2)
+		binary.BigEndian.PutUint16(fromB, uint16(startAtIndex))
+		headers = append(headers, fromB...)
+	}
+
+	_, err = conn.Write(headers)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to topics: %w", err)
+	}
+
+	var resp server.Status
+	err = binary.Read(conn, binary.BigEndian, &resp)
+	if err != nil {
+		return fmt.Errorf("failed to read confirmation of subscribe: %w", err)
+	}
+
+	if resp == server.Subscribed {
+		return nil
+	}
+
+	var dataLen uint32
+	err = binary.Read(conn, binary.BigEndian, &dataLen)
+	if err != nil {
+		return fmt.Errorf("received status %s:", resp)
+	}
+
+	buf := make([]byte, dataLen)
+	_, err = conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("received status %s:", resp)
+	}
+
+	return fmt.Errorf("received status %s - %s", resp, buf)
+}
+
+func unsubscribeToTopics(conn net.Conn, topicNames []string) error {
+	actionB := make([]byte, 2)
+	binary.BigEndian.PutUint16(actionB, uint16(server.Unsubscribe))
+	headers := actionB
+
+	b, err := json.Marshal(topicNames)
+	if err != nil {
+		return fmt.Errorf("failed to marshal topic names: %w", err)
+	}
+
+	topicNamesB := make([]byte, 4)
+	binary.BigEndian.PutUint32(topicNamesB, uint32(len(b)))
+	headers = append(headers, topicNamesB...)
+
+	_, err = conn.Write(append(headers, b...))
+	if err != nil {
+		return fmt.Errorf("failed to unsubscribe to topics: %w", err)
+	}
+
+	var resp server.Status
+	err = binary.Read(conn, binary.BigEndian, &resp)
+	if err != nil {
+		return fmt.Errorf("failed to read confirmation of unsubscribe: %w", err)
+	}
+
+	if resp == server.Unsubscribed {
+		return nil
+	}
+
+	var dataLen uint32
+	err = binary.Read(conn, binary.BigEndian, &dataLen)
+	if err != nil {
+		return fmt.Errorf("received status %s:", resp)
+	}
+
+	buf := make([]byte, dataLen)
+	_, err = conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("received status %s:", resp)
+	}
+
+	return fmt.Errorf("received status %s - %s", resp, buf)
 }
 
 // Consumer allows the consumption of messages. If during the consumer receiving messages from the

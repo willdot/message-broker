@@ -29,17 +29,28 @@ func newMessage(data []byte) message {
 	return message{data: data, deliveryCount: 1}
 }
 
-func newSubscriber(peer *peer.Peer, topic string, ackDelay, ackTimeout time.Duration) *subscriber {
+func newSubscriber(peer *peer.Peer, topic *topic, ackDelay, ackTimeout time.Duration, startAt int) *subscriber {
 	s := &subscriber{
 		peer:          peer,
-		topic:         topic,
+		topic:         topic.name,
 		messages:      make(chan message),
 		ackDelay:      ackDelay,
 		ackTimeout:    ackTimeout,
-		unsubscribeCh: make(chan struct{}),
+		unsubscribeCh: make(chan struct{}, 1),
 	}
 
 	go s.sendMessages()
+
+	go func() {
+		topic.messageStore.ReadFrom(startAt, func(msg message) {
+			select {
+			case s.messages <- msg:
+				return
+			case <-s.unsubscribeCh:
+				return
+			}
+		})
+	}()
 
 	return s
 }

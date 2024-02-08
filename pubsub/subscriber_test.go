@@ -75,7 +75,7 @@ func TestSubscribeToTopics(t *testing.T) {
 
 	topics := []string{topicA, topicB}
 
-	err = sub.SubscribeToTopics(topics)
+	err = sub.SubscribeToTopics(topics, server.Current, 0)
 	require.NoError(t, err)
 }
 
@@ -91,7 +91,7 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 
 	topics := []string{topicA, topicB}
 
-	err = sub.SubscribeToTopics(topics)
+	err = sub.SubscribeToTopics(topics, server.Current, 0)
 	require.NoError(t, err)
 
 	err = sub.UnsubscribeToTopics([]string{topicA})
@@ -258,7 +258,7 @@ func setupConsumer(t *testing.T) (*Consumer, context.CancelFunc) {
 
 	topics := []string{topicA, topicB}
 
-	err = sub.SubscribeToTopics(topics)
+	err = sub.SubscribeToTopics(topics, server.Current, 0)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())

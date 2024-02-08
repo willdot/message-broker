@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"github.com/willdot/messagebroker/pubsub"
+	"github.com/willdot/messagebroker/server"
 )
 
 var consumeOnly *bool
+var consumeFrom *int
 
 func main() {
 	consumeOnly = flag.Bool("consume-only", false, "just consumes (doesn't start server and doesn't publish)")
+	consumeFrom = flag.Int("consume-from", -1, "index of message to start consuming from. If not set it will consume from the most recent")
 	flag.Parse()
 
 	if !*consumeOnly {
@@ -28,8 +31,14 @@ func main() {
 	defer func() {
 		_ = sub.Close()
 	}()
+	startAt := 0
+	startAtType := server.Current
+	if *consumeFrom > -1 {
+		startAtType = server.From
+		startAt = *consumeFrom
+	}
 
-	err = sub.SubscribeToTopics([]string{"topic a"})
+	err = sub.SubscribeToTopics([]string{"topic a"}, startAtType, startAt)
 	if err != nil {
 		panic(err)
 	}
