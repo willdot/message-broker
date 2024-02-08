@@ -183,6 +183,10 @@ func TestSubscriberClosesWithoutUnsubscribing(t *testing.T) {
 
 	sendMessage(t, publisherConn, topicA, data)
 
+	// the timeout for a connection is 100 milliseconds, so we should wait at least this long before checking the unsubscribe
+	// TODO: see if theres a better way, but without this, the test is flakey
+	time.Sleep(time.Millisecond * 100)
+
 	assert.Len(t, srv.topics, 2)
 	assert.Len(t, srv.topics[topicA].subscriptions, 0)
 	assert.Len(t, srv.topics[topicB].subscriptions, 0)
