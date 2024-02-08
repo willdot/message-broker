@@ -1,4 +1,4 @@
-package pubsub
+package client
 
 // Message represents a message that can be published or consumed
 type Message struct {

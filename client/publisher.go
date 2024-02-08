@@ -1,4 +1,4 @@
-package pubsub
+package client
 
 import (
 	"encoding/binary"
@@ -6,7 +6,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/willdot/messagebroker/server"
+	"github.com/willdot/messagebroker/internal/server"
 )
 
 // Publisher allows messages to be published to a server

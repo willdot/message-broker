@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/willdot/messagebroker/internal/messagestore"
 )
 
 const (
@@ -39,7 +40,7 @@ func createServerWithExistingTopic(t *testing.T, topicName string) *Server {
 	srv.topics[topicName] = &topic{
 		name:          topicName,
 		subscriptions: make(map[net.Addr]*subscriber),
-		messageStore:  NewMemoryStore(),
+		messageStore:  messagestore.NewMemoryStore(),
 	}
 
 	return srv

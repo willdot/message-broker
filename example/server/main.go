@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/willdot/messagebroker/server"
+	"github.com/willdot/messagebroker/internal/server"
 )
 
 func main() {

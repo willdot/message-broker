@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/willdot/messagebroker/pubsub"
-	"github.com/willdot/messagebroker/server"
+	"github.com/willdot/messagebroker/client"
+	"github.com/willdot/messagebroker/internal/server"
 )
 
 var consumeOnly *bool
@@ -23,7 +23,7 @@ func main() {
 		go sendMessages()
 	}
 
-	sub, err := pubsub.NewSubscriber(":3000")
+	sub, err := client.NewSubscriber(":3000")
 	if err != nil {
 		panic(err)
 	}
@@ -56,7 +56,7 @@ func main() {
 }
 
 func sendMessages() {
-	publisher, err := pubsub.NewPublisher("localhost:3000")
+	publisher, err := client.NewPublisher("localhost:3000")
 	if err != nil {
 		panic(err)
 	}
@@ -69,7 +69,7 @@ func sendMessages() {
 	i := 0
 	for {
 		i++
-		msg := pubsub.NewMessage("topic a", []byte(fmt.Sprintf("message %d", i)))
+		msg := client.NewMessage("topic a", []byte(fmt.Sprintf("message %d", i)))
 
 		err = publisher.PublishMessage(msg)
 		if err != nil {

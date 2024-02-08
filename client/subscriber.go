@@ -1,4 +1,4 @@
-package pubsub
+package client
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/willdot/messagebroker/server"
+	"github.com/willdot/messagebroker/internal/server"
 )
 
 type connOpp func(conn net.Conn) error
@@ -198,7 +198,7 @@ func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
 
 func (s *Subscriber) readMessage(ctx context.Context, msgChan chan *Message) error {
 	op := func(conn net.Conn) error {
-		err := s.conn.SetReadDeadline(time.Now().Add(time.Second))
+		err := s.conn.SetReadDeadline(time.Now().Add(time.Millisecond * 300))
 		if err != nil {
 			return err
 		}
