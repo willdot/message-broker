@@ -21,3 +21,17 @@ Once a subscription has declared itself as a publisher, it will enter a loop whe
 When sending a message representing an action (subscribe, publish etc) then a uint16 binary message is sent. 
 
 When sending any other data, the length of the data is to be sent first using a binary uint32 and then the actual data sent afterwards. 
+
+## Running the server
+
+There is a server that can be run using `docker-compose up message-server`. This will start a server running listening on port 3000.
+
+## Example clients
+There is an example application that implements the subscriber and publishers in the `example` directory.
+
+Run `go build .` to build the file.
+
+When running the example there are the following flags:
+
+`publish` : settings this to true will allow messages to be sent every 500ms as well as consuming
+`consume-from` : this allows you to specify what message to start from. If you don't set this or set it to be -1, you will start consuming from the next sent message.

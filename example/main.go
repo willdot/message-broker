@@ -11,15 +11,19 @@ import (
 	"github.com/willdot/messagebroker/internal/server"
 )
 
-var consumeOnly *bool
+var publish *bool
 var consumeFrom *int
 
+const (
+	topic = "topic-a"
+)
+
 func main() {
-	consumeOnly = flag.Bool("consume-only", false, "just consumes (doesn't start server and doesn't publish)")
+	publish = flag.Bool("publish", false, "will also publish messages every 500ms until client is stopped")
 	consumeFrom = flag.Int("consume-from", -1, "index of message to start consuming from. If not set it will consume from the most recent")
 	flag.Parse()
 
-	if !*consumeOnly {
+	if *publish {
 		go sendMessages()
 	}
 
@@ -38,7 +42,7 @@ func main() {
 		startAt = *consumeFrom
 	}
 
-	err = sub.SubscribeToTopics([]string{"topic a"}, startAtType, startAt)
+	err = sub.SubscribeToTopics([]string{topic}, startAtType, startAt)
 	if err != nil {
 		panic(err)
 	}
@@ -69,7 +73,7 @@ func sendMessages() {
 	i := 0
 	for {
 		i++
-		msg := client.NewMessage("topic a", []byte(fmt.Sprintf("message %d", i)))
+		msg := client.NewMessage(topic, []byte(fmt.Sprintf("message %d", i)))
 
 		err = publisher.PublishMessage(msg)
 		if err != nil {
