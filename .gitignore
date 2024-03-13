@@ -1,2 +1,3 @@
 .DS_STORE
 example/example
+/example/server/**.db
