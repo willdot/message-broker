@@ -66,6 +66,10 @@ func (m *FileStore) ReadFrom(offset int, handleFunc func(msg internal.Message)) 
 
 		stats := bucket.Stats()
 
+		if offset < 0 || offset >= stats.KeyN-1 {
+			return nil
+		}
+
 		for i := offset; i < stats.KeyN-1; i++ {
 			data := bucket.Get([]byte(fmt.Sprintf("%d", i)))
 			handleFunc(internal.NewMessage(data))
