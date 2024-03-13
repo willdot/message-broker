@@ -2,53 +2,47 @@ package messagestore
 
 import (
 	"fmt"
-	"io"
 	"log/slog"
-	"os"
 	"sync"
 
+	"github.com/boltdb/bolt"
 	"github.com/willdot/messagebroker/internal"
 )
 
-type indexEntry struct {
-	start   int
-	dataLen int
-}
-
 // FileStore allows messages to be stored to file
 type FileStore struct {
-	index map[int]indexEntry
-	mu    sync.Mutex
+	db *bolt.DB
 
-	topicName  string
-	nextOffset int
-
-	dataFile  *os.File
-	indexFile *os.File
+	topicName string
+	mu        sync.Mutex
+	offset    int
 }
 
 // NewFileStore initializes a new file store
-func NewFileStore(topicName string) (*FileStore, error) {
-	dataFile, err := os.OpenFile(fmt.Sprintf("%s.data", topicName), os.O_CREATE|os.O_APPEND, os.ModeAppend)
+func NewFileStore(topicName string, db *bolt.DB) (*FileStore, error) {
+	var offset int
+	err := db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists([]byte(topicName))
+		if err != nil {
+			return err
+		}
+
+		stats := bucket.Stats()
+
+		offset = stats.KeyN - 1
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to open / create data file: %w", err)
-	}
-	indexFile, err := os.OpenFile(fmt.Sprintf("%s.index", topicName), os.O_CREATE|os.O_APPEND, os.ModeAppend)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open / create index file: %w", err)
+		return nil, fmt.Errorf("failed to create topic bucket: %w", err)
 	}
 
-	// f, err := os.Create(topicName)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to create file store file: %w", err)
-	// }
-	// defer f.Close()
+	slog.Info(fmt.Sprintf("current offset: %d", offset))
 
 	return &FileStore{
+		db:        db,
 		topicName: topicName,
-		index:     make(map[int]indexEntry),
-		dataFile:  dataFile,
-		indexFile: indexFile,
+		offset:    offset,
 	}, nil
 }
 
@@ -57,66 +51,39 @@ func (m *FileStore) Write(msg internal.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// first calculate where to store the data and store it in the index
-	lastEntry := m.index[m.nextOffset-1]
-	m.index[m.nextOffset] = indexEntry{
-		start:   lastEntry.start + lastEntry.dataLen,
-		dataLen: len(msg.Data),
-	}
+	err := m.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(m.topicName))
 
-	// then write the data
-	f, err := os.OpenFile(m.topicName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+		err := bucket.Put([]byte(fmt.Sprintf("%d", m.offset)), msg.Data)
+		if err != nil {
+			return err
+		}
+
+		m.offset++
+
+		return nil
+	})
+
 	if err != nil {
-		delete(m.index, m.nextOffset)
-		return fmt.Errorf("failed to write message to file: %w", err)
+		return fmt.Errorf("failed to put message in bucket: %w", err)
 	}
-	defer f.Close()
-
-	_, err = f.Write(msg.Data)
-	if err != nil {
-		delete(m.index, m.nextOffset)
-		return fmt.Errorf("failed to write message to file: %w", err)
-	}
-
-	m.nextOffset++
 
 	return nil
 }
 
 // ReadFrom will read messages from (and including) the provided offset and pass them to the provided handler
 func (m *FileStore) ReadFrom(offset int, handleFunc func(msg internal.Message)) {
-	if offset < 0 || offset >= m.nextOffset {
-		return
-	}
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	file, err := os.Open(m.topicName)
-	if err != nil {
-		slog.Error("failed to read topic file", "error", err)
-		return
-	}
-	defer file.Close()
+	_ = m.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(m.topicName))
 
-	for i := offset; i < m.nextOffset; i++ {
-		idx, ok := m.index[i]
-		if !ok {
-			continue
+		for i := offset; i < m.offset; i++ {
+			data := bucket.Get([]byte(fmt.Sprintf("%d", i)))
+			handleFunc(internal.NewMessage(data))
 		}
 
-		data := make([]byte, idx.dataLen)
-		_, err = file.ReadAt(data, int64(idx.start))
-		if err != nil && err != io.EOF {
-			slog.Error("failed to read at", "error", err)
-			return
-		}
-
-		handleFunc(internal.NewMessage(data))
-
-		if err == io.EOF {
-			break
-		}
-	}
-
+		return nil
+	})
 }
