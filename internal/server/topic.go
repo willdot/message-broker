@@ -2,9 +2,11 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 
+	"github.com/boltdb/bolt"
 	"github.com/willdot/messagebroker/internal"
 	"github.com/willdot/messagebroker/internal/messagestore"
 )
@@ -21,12 +23,23 @@ type topic struct {
 	messageStore  Store
 }
 
-func newTopic(name string) *topic {
-	messageStore := messagestore.NewMemoryStore()
+func newTopic(name string, db *bolt.DB) *topic {
+	// messageStore := messagestore.NewMemoryStore()
+	store, err := messagestore.NewFileStore(name, db)
+	if err != nil {
+		slog.Error("failed to create filestore, reverting to in memory store", "error", err)
+		store := messagestore.NewMemoryStore()
+		return &topic{
+			name:          name,
+			subscriptions: make(map[net.Addr]*subscriber),
+			messageStore:  store,
+		}
+	}
+
 	return &topic{
 		name:          name,
 		subscriptions: make(map[net.Addr]*subscriber),
-		messageStore:  messageStore,
+		messageStore:  store,
 	}
 }
 
