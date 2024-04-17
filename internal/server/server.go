@@ -376,7 +376,9 @@ func (s *Server) addSubsciberToTopic(topicName string, peer *Peer, startAt int) 
 		t = newTopic(topicName)
 	}
 
+	t.mu.Lock()
 	t.subscriptions[peer.Addr()] = newSubscriber(peer, t, s.ackDelay, s.ackTimeout, startAt)
+	t.mu.Unlock()
 
 	s.topics[topicName] = t
 }
@@ -396,25 +398,28 @@ func (s *Server) removeSubsciberFromTopic(topicName string, peer *Peer) {
 	if !ok {
 		return
 	}
-	sub, ok := t.subscriptions[peer.Addr()]
-	if !ok {
+
+	sub := t.findSubscription(peer.Addr())
+	if sub == nil {
 		return
 	}
+
 	sub.unsubscribe()
-	delete(t.subscriptions, peer.Addr())
+	t.removeSubscription(peer.Addr())
 }
 
 func (s *Server) unsubscribePeerFromAllTopics(peer *Peer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, topic := range s.topics {
-		sub, ok := topic.subscriptions[peer.Addr()]
-		if !ok {
-			continue
+	for _, t := range s.topics {
+		sub := t.findSubscription(peer.Addr())
+		if sub == nil {
+			return
 		}
+
 		sub.unsubscribe()
-		delete(topic.subscriptions, peer.Addr())
+		t.removeSubscription(peer.Addr())
 	}
 }
 
