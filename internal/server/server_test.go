@@ -128,6 +128,8 @@ func TestSubscribeToTopics(t *testing.T) {
 
 	_ = createConnectionAndSubscribe(t, []string{topicA, topicB}, Current, 0)
 
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
 	assert.Len(t, srv.topics, 2)
 	assert.Len(t, srv.topics[topicA].subscriptions, 1)
 	assert.Len(t, srv.topics[topicB].subscriptions, 1)
@@ -139,9 +141,12 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	conn := createConnectionAndSubscribe(t, []string{topicA, topicB, topicC}, Current, 0)
 
 	assert.Len(t, srv.topics, 3)
+
+	srv.mu.Lock()
 	assert.Len(t, srv.topics[topicA].subscriptions, 1)
 	assert.Len(t, srv.topics[topicB].subscriptions, 1)
 	assert.Len(t, srv.topics[topicC].subscriptions, 1)
+	srv.mu.Unlock()
 
 	topics := []string{topicA, topicB}
 
@@ -156,9 +161,12 @@ func TestUnsubscribesFromTopic(t *testing.T) {
 	assert.Equal(t, expectedRes, resp)
 
 	assert.Len(t, srv.topics, 3)
+
+	srv.mu.Lock()
 	assert.Len(t, srv.topics[topicA].subscriptions, 0)
 	assert.Len(t, srv.topics[topicB].subscriptions, 0)
 	assert.Len(t, srv.topics[topicC].subscriptions, 1)
+	srv.mu.Unlock()
 }
 
 func TestSubscriberClosesWithoutUnsubscribing(t *testing.T) {
@@ -167,8 +175,11 @@ func TestSubscriberClosesWithoutUnsubscribing(t *testing.T) {
 	conn := createConnectionAndSubscribe(t, []string{topicA, topicB}, Current, 0)
 
 	assert.Len(t, srv.topics, 2)
+
+	srv.mu.Lock()
 	assert.Len(t, srv.topics[topicA].subscriptions, 1)
 	assert.Len(t, srv.topics[topicB].subscriptions, 1)
+	srv.mu.Unlock()
 
 	// close the conn
 	err := conn.Close()
@@ -189,8 +200,11 @@ func TestSubscriberClosesWithoutUnsubscribing(t *testing.T) {
 	time.Sleep(time.Millisecond * 100)
 
 	assert.Len(t, srv.topics, 2)
+
+	srv.mu.Lock()
 	assert.Len(t, srv.topics[topicA].subscriptions, 0)
 	assert.Len(t, srv.topics[topicB].subscriptions, 0)
+	srv.mu.Unlock()
 }
 
 func TestInvalidAction(t *testing.T) {

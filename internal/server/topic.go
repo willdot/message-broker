@@ -59,3 +59,17 @@ func (t *topic) sendMessageToSubscribers(msg internal.Message) error {
 
 	return nil
 }
+
+func (t *topic) findSubscription(addr net.Addr) *subscriber {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.subscriptions[addr]
+}
+
+func (t *topic) removeSubscription(addr net.Addr) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	delete(t.subscriptions, addr)
+}
