@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/boltdb/bolt"
+
 	"github.com/willdot/messagebroker/internal"
 )
 
@@ -68,6 +70,8 @@ type Server struct {
 
 	ackDelay   time.Duration
 	ackTimeout time.Duration
+
+	db *bolt.DB
 }
 
 // New creates and starts a new server
@@ -77,11 +81,17 @@ func New(Addr string, ackDelay, ackTimeout time.Duration) (*Server, error) {
 		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
 
+	db, err := bolt.Open("store.db", 0600, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database store: %w", err)
+	}
+
 	srv := &Server{
 		lis:        lis,
 		topics:     map[string]*topic{},
 		ackDelay:   ackDelay,
 		ackTimeout: ackTimeout,
+		db:         db,
 	}
 
 	go srv.start()
@@ -91,6 +101,8 @@ func New(Addr string, ackDelay, ackTimeout time.Duration) (*Server, error) {
 
 // Shutdown will cleanly shutdown the server
 func (s *Server) Shutdown() error {
+	s.db.Close()
+
 	return s.lis.Close()
 }
 
@@ -239,6 +251,8 @@ func (s *Server) subscribePeerToTopic(peer *Peer) {
 			return nil
 		}
 
+		slog.Info("start at is int", "value", startAt)
+
 		s.subscribeToTopics(peer, topics, startAt)
 		writeStatus(Subscribed, "", conn)
 
@@ -340,7 +354,7 @@ func (s *Server) handlePublish(peer *Peer) {
 
 			topic := s.getTopic(topicStr)
 			if topic == nil {
-				topic = newTopic(topicStr)
+				topic = newTopic(topicStr, s.db)
 				s.topics[topicStr] = topic
 			}
 
@@ -373,7 +387,7 @@ func (s *Server) addSubsciberToTopic(topicName string, peer *Peer, startAt int) 
 
 	t, ok := s.topics[topicName]
 	if !ok {
-		t = newTopic(topicName)
+		t = newTopic(topicName, s.db)
 	}
 
 	t.mu.Lock()
