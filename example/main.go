@@ -13,6 +13,7 @@ import (
 
 var publish *bool
 var consumeFrom *int
+var host *string
 
 const (
 	topic = "topic-a"
@@ -21,16 +22,20 @@ const (
 func main() {
 	publish = flag.Bool("publish", false, "will also publish messages every 500ms until client is stopped")
 	consumeFrom = flag.Int("consume-from", -1, "index of message to start consuming from. If not set it will consume from the most recent")
+	host = flag.String("host", "localhost:3000", "the host to connect to")
+
 	flag.Parse()
 
 	if *publish {
-		go sendMessages()
+		go sendMessages(*host)
 	}
 
-	sub, err := client.NewSubscriber(":3000")
+	sub, err := client.NewSubscriber(*host)
 	if err != nil {
 		panic(err)
 	}
+
+	slog.Info("created subscription")
 
 	defer func() {
 		_ = sub.Close()
@@ -59,8 +64,8 @@ func main() {
 
 }
 
-func sendMessages() {
-	publisher, err := client.NewPublisher("localhost:3000")
+func sendMessages(host string) {
+	publisher, err := client.NewPublisher(host)
 	if err != nil {
 		panic(err)
 	}
