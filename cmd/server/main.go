@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,7 +13,12 @@ import (
 )
 
 func main() {
-	srv, err := server.New(":3000", time.Second, time.Second*2)
+	port := os.Getenv("PORT")
+	if port == "" {
+		slog.Info("PORT env not set, using default", "default", "3000")
+		port = "3000"
+	}
+	srv, err := server.New(fmt.Sprintf(":%s", port), time.Second, time.Second*2)
 	if err != nil {
 		log.Fatal(err)
 	}
