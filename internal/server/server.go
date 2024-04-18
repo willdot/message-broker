@@ -84,6 +84,7 @@ func New(Addr string, ackDelay, ackTimeout time.Duration) (*Server, error) {
 		ackTimeout: ackTimeout,
 	}
 
+	slog.Info("starting server")
 	go srv.start()
 
 	return srv, nil
