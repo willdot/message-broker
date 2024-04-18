@@ -1,7 +1,7 @@
 version: "3.7"
 services:
-  message-server: 
+  message-server:
     build:
       context: .
-      dockerfile: dockerfile.server
-    ports: [ "3000:3000" ]
+      dockerfile: Dockerfile
+    ports: ["3000:3000"]
