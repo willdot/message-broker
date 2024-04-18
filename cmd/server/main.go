@@ -18,6 +18,7 @@ func main() {
 		slog.Info("PORT env not set, using default", "default", "3000")
 		port = "3000"
 	}
+	slog.Info("using port", "port", port)
 	srv, err := server.New(fmt.Sprintf(":%s", port), time.Second, time.Second*2)
 	if err != nil {
 		log.Fatal(err)
