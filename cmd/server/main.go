@@ -19,7 +19,7 @@ func main() {
 		port = "3000"
 	}
 	slog.Info("using port", "port", port)
-	srv, err := server.New(fmt.Sprintf(":%s", port), time.Second, time.Second*2)
+	srv, err := server.New(fmt.Sprintf("0.0.0.0:%s", port), time.Second, time.Second*2)
 	if err != nil {
 		log.Fatal(err)
 	}
