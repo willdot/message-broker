@@ -16,5 +16,5 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 COPY --from=builder /my-app/message-broker-server .
-
+EXPOSE 3000
 CMD ["./message-broker-server"]
