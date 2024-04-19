@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/willdot/messagebroker/internal/server"
@@ -17,8 +20,10 @@ type connOpp func(conn net.Conn) error
 
 // Subscriber allows subscriptions to a server and the consumption of messages
 type Subscriber struct {
-	conn   net.Conn
-	connMu sync.Mutex
+	conn             net.Conn
+	connMu           sync.Mutex
+	subscribedTopics []string
+	addr             string
 }
 
 // NewSubscriber will connect to the server at the given address
@@ -30,7 +35,18 @@ func NewSubscriber(addr string) (*Subscriber, error) {
 
 	return &Subscriber{
 		conn: conn,
+		addr: addr,
 	}, nil
+}
+
+func (s *Subscriber) reconnect() error {
+	conn, err := net.Dial("tcp", s.addr)
+	if err != nil {
+		return fmt.Errorf("failed to dial: %w", err)
+	}
+
+	s.conn = conn
+	return nil
 }
 
 // Close cleanly shuts down the subscriber
@@ -44,7 +60,50 @@ func (s *Subscriber) SubscribeToTopics(topicNames []string, startAtType server.S
 		return subscribeToTopics(conn, topicNames, startAtType, startAtIndex)
 	}
 
-	return s.connOperation(op)
+	err := s.connOperation(op)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to topics: %w", err)
+	}
+
+	s.addToSubscribedTopics(topicNames)
+
+	return nil
+}
+
+func (s *Subscriber) addToSubscribedTopics(topics []string) {
+	existingSubs := make(map[string]struct{})
+	for _, topic := range s.subscribedTopics {
+		existingSubs[topic] = struct{}{}
+	}
+
+	for _, topic := range topics {
+		existingSubs[topic] = struct{}{}
+	}
+
+	subs := make([]string, 0, len(existingSubs))
+	for topic := range existingSubs {
+		subs = append(subs, topic)
+	}
+
+	s.subscribedTopics = subs
+}
+
+func (s *Subscriber) removeTopicsFromSubscription(topics []string) {
+	existingSubs := make(map[string]struct{})
+	for _, topic := range s.subscribedTopics {
+		existingSubs[topic] = struct{}{}
+	}
+
+	for _, topic := range topics {
+		delete(existingSubs, topic)
+	}
+
+	subs := make([]string, 0, len(existingSubs))
+	for topic := range existingSubs {
+		subs = append(subs, topic)
+	}
+
+	s.subscribedTopics = subs
 }
 
 // UnsubscribeToTopics will unsubscribe to the provided topics
@@ -53,7 +112,14 @@ func (s *Subscriber) UnsubscribeToTopics(topicNames []string) error {
 		return unsubscribeToTopics(conn, topicNames)
 	}
 
-	return s.connOperation(op)
+	err := s.connOperation(op)
+	if err != nil {
+		return fmt.Errorf("failed to unsubscribe to topics: %w", err)
+	}
+
+	s.removeTopicsFromSubscription(topicNames)
+
+	return nil
 }
 
 func subscribeToTopics(conn net.Conn, topicNames []string, startAtType server.StartAtType, startAtIndex int) error {
@@ -189,11 +255,37 @@ func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
 		}
 
 		err := s.readMessage(ctx, consumer.msgs)
-		if err != nil {
-			// TODO: if broken pipe, we need to somehow reconnect and subscribe again....YIKES
+		if err == nil {
+			continue
+		}
+
+		// if we couldn't connect to the server, attempt to reconnect
+		if !errors.Is(err, syscall.EPIPE) && !errors.Is(err, io.EOF) {
+			slog.Error("failed to read message", "error", err)
 			consumer.Err = err
 			return
 		}
+
+		slog.Info("attempting to reconnect")
+
+		for i := 0; i < 5; i++ {
+			time.Sleep(time.Millisecond * 500)
+			err = s.reconnect()
+			if err == nil {
+				break
+			}
+
+			slog.Error("Failed to reconnect", "error", err, "attempt", i)
+		}
+
+		slog.Info("attempting to resubscribe")
+
+		err = s.SubscribeToTopics(s.subscribedTopics, server.Current, 0)
+		if err != nil {
+			consumer.Err = fmt.Errorf("failed to subscribe to topics after reconnecting: %w", err)
+			return
+		}
+
 	}
 }
 
