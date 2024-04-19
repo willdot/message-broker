@@ -55,7 +55,7 @@ func (p *Publisher) PublishMessage(message *Message) error {
 
 		_, err := conn.Write(append(headers, message.Data...))
 		if err != nil {
-			return fmt.Errorf("failed to publish data to server")
+			return fmt.Errorf("failed to publish data to server: %w", err)
 		}
 		return nil
 	}
