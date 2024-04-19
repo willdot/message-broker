@@ -190,6 +190,7 @@ func (s *Subscriber) consume(ctx context.Context, consumer *Consumer) {
 
 		err := s.readMessage(ctx, consumer.msgs)
 		if err != nil {
+			// TODO: if broken pipe, we need to somehow reconnect and subscribe again....YIKES
 			consumer.Err = err
 			return
 		}
