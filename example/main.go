@@ -57,6 +57,8 @@ func main() {
 		msg.Ack(true)
 	}
 
+	time.Sleep(time.Second * 30)
+
 }
 
 func sendMessages() {
@@ -80,6 +82,8 @@ func sendMessages() {
 			slog.Error("failed to publish message", "error", err)
 			continue
 		}
+
+		slog.Info("message sent")
 
 		time.Sleep(time.Millisecond * 500)
 	}
